@@ -1,4 +1,4 @@
-use aoc2018::{dispatch, Result};
+use aoc2019::{dispatch, Result};
 
 fn main() {
     dispatch(&part1, &part2)
