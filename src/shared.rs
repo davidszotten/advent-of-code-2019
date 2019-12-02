@@ -86,13 +86,12 @@ where
     }
 }
 
-pub fn dispatch<S, T>(part1: &DayFunc<S>, part2: &DayFunc<T>)
+pub fn dispatch<S, T>(part1: &DayFunc<S>, part2: &DayFunc<T>) -> Result<()>
 where
     S: Display,
     T: Display,
 {
-    match run(part1, part2) {
-        Ok(result) => println!("{}", result),
-        Err(err) => println!("{}", err),
-    };
+    let result = run(part1, part2)?;
+    println!("{}", result);
+    Ok(())
 }

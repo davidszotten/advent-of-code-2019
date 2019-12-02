@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 
 use aoc2019::{dispatch, Result};
 
-fn main() {
+fn main() -> Result<()> {
     dispatch(&part1, &part2)
 }
 

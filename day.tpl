@@ -1,6 +1,6 @@
 use aoc2019::{dispatch, Result};
 
-fn main() {
+fn main() -> Result<()> {
     dispatch(&part1, &part2)
 }
 
@@ -18,6 +18,7 @@ mod tests {
 
     #[test]
     fn test_part1() -> Result<()> {
-        Ok(assert_eq!(part1("")?, 0))
+        assert_eq!(part1("")?, 0);
+        Ok(())
     }
 }
