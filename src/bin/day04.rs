@@ -59,24 +59,22 @@ fn is_password2(number: i32) -> bool {
     digits.iter().any(|&count| count == 2)
 }
 
-fn part1(input: &str) -> Result<i32> {
+fn count_in_range(input: &str, checker: fn(i32) -> bool) -> Result<i32> {
     let start_end: Vec<_> = input
         .split('-')
         .filter_map(|x| x.parse::<i32>().ok())
         .collect();
     Ok((start_end[0]..=start_end[1])
-        .filter(|&x| is_password(x))
+        .filter(|&x| checker(x))
         .count() as i32)
 }
 
+fn part1(input: &str) -> Result<i32> {
+    count_in_range(input, is_password)
+}
+
 fn part2(input: &str) -> Result<i32> {
-    let start_end: Vec<_> = input
-        .split('-')
-        .filter_map(|x| x.parse::<i32>().ok())
-        .collect();
-    Ok((start_end[0]..=start_end[1])
-        .filter(|&x| is_password2(x))
-        .count() as i32)
+    count_in_range(input, is_password2)
 }
 
 #[cfg(test)]
