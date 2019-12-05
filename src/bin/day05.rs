@@ -12,20 +12,6 @@ enum Mode {
     Immediate,
 }
 
-struct Modes {
-    value: i32,
-}
-
-impl Iterator for Modes {
-    type Item = Mode;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mode = Mode::try_from(self.value % 10).ok();
-        self.value /= 10;
-        mode
-    }
-}
-
 impl TryFrom<i32> for Mode {
     type Error = Error;
 
@@ -37,6 +23,20 @@ impl TryFrom<i32> for Mode {
             1 => Immediate,
             _ => bail!("Invalid op code"),
         })
+    }
+}
+
+struct Modes {
+    value: i32,
+}
+
+impl Iterator for Modes {
+    type Item = Mode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mode = Mode::try_from(self.value % 10).ok();
+        self.value /= 10;
+        mode
     }
 }
 
@@ -56,6 +56,10 @@ enum Op {
     Mul(Mode, Mode, Mode),
     Input(Mode),
     Output(Mode),
+    JumpIfTrue(Mode, Mode),
+    JumpIfFalse(Mode, Mode),
+    LessThan(Mode, Mode, Mode),
+    Equals(Mode, Mode, Mode),
     Halt,
 }
 
@@ -74,6 +78,10 @@ impl TryFrom<i32> for Op {
             2 => Mul(modes.get()?, modes.get()?, modes.get()?),
             3 => Input(modes.get()?),
             4 => Output(modes.get()?),
+            5 => JumpIfTrue(modes.get()?, modes.get()?),
+            6 => JumpIfFalse(modes.get()?, modes.get()?),
+            7 => LessThan(modes.get()?, modes.get()?, modes.get()?),
+            8 => Equals(modes.get()?, modes.get()?, modes.get()?),
             99 => Halt,
             _ => bail!("Invalid op code"),
         };
@@ -144,29 +152,80 @@ impl Cpu {
 
                     pc += 2;
                 }
+                JumpIfTrue(mode1, mode2) => {
+                    let a = self.program[pc + 1];
+                    let b = self.program[pc + 2];
+                    if self.get(mode1, a) != 0 {
+                        pc = self.get(mode2, b) as usize;
+                    } else {
+                        pc += 3;
+                    }
+                }
+                JumpIfFalse(mode1, mode2) => {
+                    let a = self.program[pc + 1];
+                    let b = self.program[pc + 2];
+                    if self.get(mode1, a) == 0 {
+                        pc = self.get(mode2, b) as usize;
+                    } else {
+                        pc += 3;
+                    }
+                }
+                LessThan(mode1, mode2, mode3) => {
+                    assert_eq!(mode3, Mode::Position);
+                    let a = self.program[pc + 1];
+                    let b = self.program[pc + 2];
+                    let c = self.program[pc + 3];
+                    self.set(
+                        c,
+                        if self.get(mode1, a) < self.get(mode2, b) {
+                            1
+                        } else {
+                            0
+                        },
+                    );
+                    pc += 4;
+                }
+                Equals(mode1, mode2, mode3) => {
+                    assert_eq!(mode3, Mode::Position);
+                    let a = self.program[pc + 1];
+                    let b = self.program[pc + 2];
+                    let c = self.program[pc + 3];
+                    self.set(
+                        c,
+                        if self.get(mode1, a) == self.get(mode2, b) {
+                            1
+                        } else {
+                            0
+                        },
+                    );
+                    pc += 4;
+                }
+
                 Halt => break,
-                // _ => unreachable!(),
             }
         }
-        // dbg!(&self.output);
         let output = self.output.pop().ok_or(err_msg("no output"))?;
         assert_eq!(self.output.iter().all(|&x| x == 0), true);
         Ok(output)
     }
 }
 
-fn part1(input: &str) -> Result<i32> {
-    let program: Vec<_> = input
+fn calculate(program_str: &str, input_value: i32) -> Result<i32> {
+    let program: Vec<_> = program_str
         .split(',')
         .filter_map(|x| x.parse::<i32>().ok())
         .collect();
     let mut cpu = Cpu::new(program);
-    cpu.input.push(1);
+    cpu.input.push(input_value);
     cpu.run()
 }
 
-fn part2(_input: &str) -> Result<i32> {
-    Ok(0)
+fn part1(input: &str) -> Result<i32> {
+    calculate(input, 1)
+}
+
+fn part2(input: &str) -> Result<i32> {
+    calculate(input, 5)
 }
 
 #[cfg(test)]
@@ -184,8 +243,16 @@ mod tests {
 
     #[test]
     fn test_part1() -> Result<()> {
-        assert_eq!(part1("1002,4,3,4,33")?, 0);
-        assert_eq!(part1("1101,100,-1,4,0")?, 0);
+        // assert_eq!(part1("1002,4,3,4,33")?, 0);
+        // assert_eq!(part1("1101,100,-1,4,0")?, 0);
+        assert_eq!(calculate("3,9,8,9,10,9,4,9,99,-1,8", 8)?, 1);
+        assert_eq!(calculate("3,9,8,9,10,9,4,9,99,-1,8", 9)?, 0);
+
+        assert_eq!(calculate("3,9,7,9,10,9,4,9,99,-1,8", 7)?, 1);
+        assert_eq!(calculate("3,9,7,9,10,9,4,9,99,-1,8", 9)?, 0);
+
+        assert_eq!(calculate("3,12,6,12,15,1,13,14,13,4,13,99,-1,0,1,9", 7)?, 1);
+        assert_eq!(calculate("3,12,6,12,15,1,13,14,13,4,13,99,-1,0,1,9", 0)?, 0);
         Ok(())
     }
 }
