@@ -223,14 +223,9 @@ fn calculate(program_str: &str, input_values: &[i32]) -> Result<i32> {
     cpu.run()
 }
 
-fn as_int(vec: &[i32]) -> i32 {
-    vec.iter().fold(0, |acc, x| 10 * acc + x)
-}
-
 fn part1(input: &str) -> Result<i32> {
     let mut phases = vec![0, 1, 2, 3, 4];
     let mut max_signal = 0;
-    // let mut max_phases = as_int(&phases);
     loop {
         let mut signal = 0;
         // dbg!(&phases);
@@ -241,7 +236,6 @@ fn part1(input: &str) -> Result<i32> {
 
         if signal > max_signal {
             max_signal = signal;
-            // max_phases = as_int(&phases);
         }
 
         if !phases.next_permutation() {
@@ -267,11 +261,6 @@ mod tests {
             Op::Mul(Mode::Position, Mode::Immediate, Mode::Position)
         );
         Ok(())
-    }
-
-    #[test]
-    fn test_as_int() {
-        assert_eq!(as_int(&vec![1, 2, 3]), 123);
     }
 
     #[test]
