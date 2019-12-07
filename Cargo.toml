@@ -5,9 +5,10 @@ authors = ["David Szotten <davidszotten@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+cached = "*"
 clap = "*"
 failure = "*"
 itertools = "*"
-regex = "*"
 lazy_static = "*"
-cached = "*"
+permutohedron = "*"
+regex = "*"
