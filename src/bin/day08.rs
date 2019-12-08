@@ -1,5 +1,8 @@
 use aoc2019::{dispatch, Result};
+use failure::err_msg;
 use std::collections::HashMap;
+use std::io::Write;
+use std::str;
 
 fn main() -> Result<()> {
     dispatch(&part1, &part2)
@@ -35,9 +38,10 @@ enum Pixel {
     Black,
 }
 
-fn part2(input: &str) -> Result<i32> {
+fn write_image(input: &str, width: usize, height: usize) -> Result<String> {
+    let mut buf = Vec::new();
     use Pixel::*;
-    let size = 25 * 6;
+    let size = width * height;
     let mut output = vec![Transparent; size];
     for layer in input.chars().collect::<Vec<_>>().chunks(size) {
         for (digit, pixel) in layer.iter().zip(output.iter_mut()) {
@@ -52,16 +56,23 @@ fn part2(input: &str) -> Result<i32> {
             }
         }
     }
-    for row in output.chunks(25) {
+    for row in output.chunks(width) {
         for c in row.iter().map(|p| match p {
             Transparent => unreachable!("transparent pixel"),
             White => '#',
             Black => ' ',
         }) {
-            print!("{}", c)
+            write!(&mut buf, "{}", c)?;
         }
-        print!("\n");
+        write!(&mut buf, "\n")?;
     }
+    str::from_utf8(&buf)
+        .map_err(|_| err_msg("Failed to convert to string"))
+        .map(|s| s.to_string())
+}
+
+fn part2(input: &str) -> Result<i32> {
+    print!("{}", write_image(input, 25, 6)?);
 
     Ok(0)
 }
@@ -73,6 +84,12 @@ mod tests {
     #[test]
     fn test_part1() -> Result<()> {
         assert_eq!(checksum("123456789012", 2 * 3)?, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_image() -> Result<()> {
+        assert_eq!(write_image("0222112222120000", 2, 2)?, " #\n# \n");
         Ok(())
     }
 }
