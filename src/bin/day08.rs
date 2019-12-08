@@ -40,13 +40,13 @@ fn part2(input: &str) -> Result<i32> {
     let size = 25 * 6;
     let mut output = vec![Transparent; size];
     for layer in input.chars().collect::<Vec<_>>().chunks(size) {
-        for (index, digit) in layer.iter().enumerate() {
-            if output[index] != Transparent {
+        for (digit, pixel) in layer.iter().zip(output.iter_mut()) {
+            if *pixel != Transparent {
                 continue;
             }
             match digit {
-                '0' => output[index] = Black,
-                '1' => output[index] = White,
+                '0' => *pixel = Black,
+                '1' => *pixel = White,
                 '2' => {}
                 c => unreachable!("unexpected digit: {:?}", c),
             }
