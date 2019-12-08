@@ -71,10 +71,8 @@ fn write_image(input: &str, width: usize, height: usize) -> Result<String> {
         .map(|s| s.to_string())
 }
 
-fn part2(input: &str) -> Result<i32> {
-    print!("{}", write_image(input, 25, 6)?);
-
-    Ok(0)
+fn part2(input: &str) -> Result<String> {
+    write_image(input, 25, 6)
 }
 
 #[cfg(test)]
