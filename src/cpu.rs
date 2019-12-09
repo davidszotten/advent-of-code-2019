@@ -1,30 +1,32 @@
 use super::Result;
 use failure::{bail, err_msg, Error};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
     Position,
     Immediate,
+    Relative,
 }
 
-impl TryFrom<i32> for Mode {
+impl TryFrom<i64> for Mode {
     type Error = Error;
 
-    fn try_from(value: i32) -> Result<Self> {
+    fn try_from(value: i64) -> Result<Self> {
         use Mode::*;
 
         Ok(match value {
             0 => Position,
             1 => Immediate,
+            2 => Relative,
             _ => bail!("Invalid op code"),
         })
     }
 }
 
 struct Modes {
-    value: i32,
+    value: i64,
 }
 
 impl Iterator for Modes {
@@ -38,7 +40,7 @@ impl Iterator for Modes {
 }
 
 impl Modes {
-    fn new(value: i32) -> Self {
+    fn new(value: i64) -> Self {
         Modes { value }
     }
 
@@ -57,13 +59,14 @@ enum Op {
     JumpIfFalse(Mode, Mode),
     LessThan(Mode, Mode, Mode),
     Equals(Mode, Mode, Mode),
+    AdjustRelativeBase(Mode),
     Halt,
 }
 
-impl TryFrom<i32> for Op {
+impl TryFrom<i64> for Op {
     type Error = Error;
 
-    fn try_from(value: i32) -> Result<Self> {
+    fn try_from(value: i64) -> Result<Self> {
         use Op::*;
 
         let op_value = value % 100;
@@ -79,6 +82,7 @@ impl TryFrom<i32> for Op {
             6 => JumpIfFalse(modes.get()?, modes.get()?),
             7 => LessThan(modes.get()?, modes.get()?, modes.get()?),
             8 => Equals(modes.get()?, modes.get()?, modes.get()?),
+            9 => AdjustRelativeBase(modes.get()?),
             99 => Halt,
             _ => bail!("Invalid op code"),
         };
@@ -88,47 +92,69 @@ impl TryFrom<i32> for Op {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CpuState {
-    Output(i32),
+    Output(i64),
     NeedsInput,
     Halted,
 }
 
 pub struct Cpu {
     pc: usize,
-    program: Vec<i32>,
-    input: VecDeque<i32>,
+    program: Vec<i64>,
+    input: VecDeque<i64>,
+    relative_base: i64,
+    memory: HashMap<i64, i64>,
 }
 
 impl Cpu {
-    fn new(program: Vec<i32>) -> Self {
+    fn new(program: Vec<i64>) -> Self {
         Cpu {
             pc: 0,
             program,
             input: VecDeque::new(),
+            relative_base: 0,
+            memory: HashMap::new(),
         }
     }
 
     pub fn from_str(program_str: &str) -> Self {
         let program: Vec<_> = program_str
             .split(',')
-            .filter_map(|x| x.parse::<i32>().ok())
+            .filter_map(|x| x.parse::<i64>().ok())
             .collect();
         Self::new(program)
     }
 
-    pub fn enqueue_input(&mut self, value: i32) {
+    pub fn enqueue_input(&mut self, value: i64) {
         self.input.push_back(value);
     }
 
-    fn get(&self, mode: Mode, source: i32) -> i32 {
+    fn get(&self, mode: Mode, source: i64) -> i64 {
         match mode {
             Mode::Immediate => source,
-            Mode::Position => self.program[source as usize],
+            Mode::Position => self.get_mem(source),
+            Mode::Relative => self.get_mem(self.relative_base + source),
         }
     }
 
-    fn set(&mut self, destination: i32, value: i32) {
-        self.program[destination as usize] = value;
+    fn get_mem(&self, source: i64) -> i64 {
+        *self
+            .program
+            .get(source as usize)
+            .unwrap_or(self.memory.get(&source).unwrap_or(&0))
+    }
+
+    fn set(&mut self, mode: Mode, destination: i64, value: i64) {
+        let destination = match mode {
+            Mode::Immediate => unreachable!("set called with immediate mode"),
+            Mode::Position => destination,
+            Mode::Relative => self.relative_base + destination,
+        };
+        assert!(destination >= 0);
+        if destination as usize >= self.program.len() {
+            self.memory.insert(destination, value);
+        } else {
+            self.program[destination as usize] = value;
+        }
     }
 
     pub fn run(&mut self) -> Result<CpuState> {
@@ -138,28 +164,25 @@ impl Cpu {
             use Op::*;
             match op {
                 Add(mode1, mode2, mode3) => {
-                    assert_eq!(mode3, Mode::Position);
                     let a = self.program[self.pc + 1];
                     let b = self.program[self.pc + 2];
                     let c = self.program[self.pc + 3];
-                    self.set(c, self.get(mode1, a) + self.get(mode2, b));
+                    self.set(mode3, c, self.get(mode1, a) + self.get(mode2, b));
                     self.pc += 4;
                 }
                 Mul(mode1, mode2, mode3) => {
-                    assert_eq!(mode3, Mode::Position);
                     let a = self.program[self.pc + 1];
                     let b = self.program[self.pc + 2];
                     let c = self.program[self.pc + 3];
-                    self.set(c, self.get(mode1, a) * self.get(mode2, b));
+                    self.set(mode3, c, self.get(mode1, a) * self.get(mode2, b));
                     self.pc += 4;
                 }
                 Input(mode) => {
-                    assert_eq!(mode, Mode::Position);
                     let a = self.program[self.pc + 1];
                     match self.input.pop_front() {
                         None => break CpuState::NeedsInput,
                         Some(value) => {
-                            self.set(a, value);
+                            self.set(mode, a, value);
                             self.pc += 2;
                         }
                     }
@@ -189,11 +212,11 @@ impl Cpu {
                     }
                 }
                 LessThan(mode1, mode2, mode3) => {
-                    assert_eq!(mode3, Mode::Position);
                     let a = self.program[self.pc + 1];
                     let b = self.program[self.pc + 2];
                     let c = self.program[self.pc + 3];
                     self.set(
+                        mode3,
                         c,
                         if self.get(mode1, a) < self.get(mode2, b) {
                             1
@@ -204,11 +227,11 @@ impl Cpu {
                     self.pc += 4;
                 }
                 Equals(mode1, mode2, mode3) => {
-                    assert_eq!(mode3, Mode::Position);
                     let a = self.program[self.pc + 1];
                     let b = self.program[self.pc + 2];
                     let c = self.program[self.pc + 3];
                     self.set(
+                        mode3,
                         c,
                         if self.get(mode1, a) == self.get(mode2, b) {
                             1
@@ -218,6 +241,11 @@ impl Cpu {
                     );
                     self.pc += 4;
                 }
+                AdjustRelativeBase(mode) => {
+                    let a = self.program[self.pc + 1];
+                    self.relative_base += self.get(mode, a);
+                    self.pc += 2;
+                }
 
                 Halt => break CpuState::Halted,
             }
@@ -226,11 +254,11 @@ impl Cpu {
     }
 }
 
-pub fn read_memory(cpu: &Cpu, position: usize) -> i32 {
-    cpu.program[position]
+pub fn read_memory(cpu: &Cpu, position: usize) -> i64 {
+    cpu.get_mem(position as i64)
 }
 
-pub fn set_memory(cpu: &mut Cpu, position: usize, value: i32) {
+pub fn set_memory(cpu: &mut Cpu, position: usize, value: i64) {
     cpu.program[position] = value;
 }
 
@@ -244,6 +272,17 @@ mod tests {
             Op::try_from(1002)?,
             Op::Mul(Mode::Position, Mode::Immediate, Mode::Position)
         );
+        assert_eq!(Op::try_from(203)?, Op::Input(Mode::Relative));
+        Ok(())
+    }
+
+    #[test]
+    fn test_203() -> Result<()> {
+        let mut cpu = Cpu::from_str("203,10,99");
+        cpu.relative_base = 2;
+        cpu.enqueue_input(1);
+        assert_eq!(cpu.run()?, CpuState::Halted);
+        assert_eq!(read_memory(&cpu, 12), 1);
         Ok(())
     }
 }

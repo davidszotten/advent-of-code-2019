@@ -6,7 +6,7 @@ fn main() -> Result<()> {
     dispatch(&part1, &part2)
 }
 
-fn calculate(program_str: &str, input_values: &[i32]) -> Result<i32> {
+fn calculate(program_str: &str, input_values: &[i64]) -> Result<i64> {
     let mut cpu = Cpu::from_str(program_str);
     for input_value in input_values.iter() {
         cpu.enqueue_input(*input_value);
@@ -17,7 +17,7 @@ fn calculate(program_str: &str, input_values: &[i32]) -> Result<i32> {
     }
 }
 
-fn part1(input: &str) -> Result<i32> {
+fn part1(input: &str) -> Result<i64> {
     let mut phases = vec![0, 1, 2, 3, 4];
     let mut max_signal = 0;
     loop {
@@ -37,7 +37,7 @@ fn part1(input: &str) -> Result<i32> {
     Ok(max_signal)
 }
 
-fn part2(input: &str) -> Result<i32> {
+fn part2(input: &str) -> Result<i64> {
     let mut phases = vec![5, 6, 7, 8, 9];
     let mut max_signal = 0;
 

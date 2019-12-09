@@ -7,7 +7,7 @@ fn main() -> Result<()> {
     dispatch(&part1, &part2)
 }
 
-fn part1(input: &str) -> Result<i32> {
+fn part1(input: &str) -> Result<i64> {
     let mut cpu = Cpu::from_str(input);
     set_memory(&mut cpu, 1, 12);
     set_memory(&mut cpu, 2, 2);
@@ -15,7 +15,7 @@ fn part1(input: &str) -> Result<i32> {
     Ok(read_memory(&cpu, 0))
 }
 
-fn part2(input: &str) -> Result<i32> {
+fn part2(input: &str) -> Result<i64> {
     for noun in 0..=99 {
         for verb in 0..=99 {
             let mut cpu = Cpu::from_str(input);
@@ -34,7 +34,7 @@ fn part2(input: &str) -> Result<i32> {
 mod tests {
     use super::*;
 
-    fn run(input: &str) -> Result<i32> {
+    fn run(input: &str) -> Result<i64> {
         let mut cpu = Cpu::from_str(input);
         assert_eq!(cpu.run()?, CpuState::Halted);
         Ok(read_memory(&cpu, 0))

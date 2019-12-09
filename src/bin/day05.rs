@@ -5,7 +5,7 @@ fn main() -> Result<()> {
     dispatch(&part1, &part2)
 }
 
-fn calculate(program_str: &str, input_value: i32) -> Result<i32> {
+fn calculate(program_str: &str, input_value: i64) -> Result<i64> {
     let mut cpu = Cpu::from_str(program_str);
     cpu.enqueue_input(input_value);
     cpu.run().map(|res| match res {
@@ -14,7 +14,7 @@ fn calculate(program_str: &str, input_value: i32) -> Result<i32> {
     })
 }
 
-fn part1(input: &str) -> Result<i32> {
+fn part1(input: &str) -> Result<i64> {
     let mut cpu = Cpu::from_str(input);
     cpu.enqueue_input(1);
     let mut outputs = vec![];
@@ -30,7 +30,7 @@ fn part1(input: &str) -> Result<i32> {
     Ok(last)
 }
 
-fn part2(input: &str) -> Result<i32> {
+fn part2(input: &str) -> Result<i64> {
     calculate(input, 5)
 }
 
