@@ -1,6 +1,9 @@
 use aoc2019::cpu::{Cpu, CpuState};
 use aoc2019::{dispatch, Result};
+use failure::err_msg;
 use std::collections::HashSet;
+use std::io::Write;
+use std::str;
 
 fn main() -> Result<()> {
     dispatch(&part1, &part2)
@@ -114,7 +117,7 @@ fn part1(input: &str) -> Result<usize> {
     Ok(paints.len())
 }
 
-fn part2(input: &str) -> Result<usize> {
+fn part2(input: &str) -> Result<String> {
     let mut whites = HashSet::new();
     let mut paints = HashSet::new();
 
@@ -166,6 +169,8 @@ fn part2(input: &str) -> Result<usize> {
 
     // dbg!(&whites.contains(&Coor::new(26, 5)));
 
+    let mut buf = Vec::new();
+
     for y in 0..=max_y {
         for x in 0..=max_x {
             // dbg!(x, y);
@@ -174,9 +179,11 @@ fn part2(input: &str) -> Result<usize> {
             } else {
                 " "
             };
-            print!("{}", output);
+            write!(&mut buf, "{}", output)?;
         }
-        print!("\n");
+        write!(&mut buf, "\n")?;
     }
-    Ok(paints.len())
+    str::from_utf8(&buf)
+        .map_err(|_| err_msg("Failed to convert to string"))
+        .map(|s| s.to_string())
 }
