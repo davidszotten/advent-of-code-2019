@@ -40,9 +40,6 @@ fn visibility(station: Coor, asteroids: &[Coor]) -> HashMap<Coor, bool> {
         }
         let d = gcd(dx, dy);
         let key = (dx / d, dy / d);
-        // if (x, y) == (8, 0) || (x, y) == (8, 1) {
-        // dbg!(x, y, dx, dy, d, key);
-        // }
         let val: Coor = (x, y);
         grouped.entry(key).or_insert(vec![]).push((d, val));
     }
@@ -53,15 +50,11 @@ fn visibility(station: Coor, asteroids: &[Coor]) -> HashMap<Coor, bool> {
         distances.sort();
         let &smallest = distances[0];
 
-        // if key == (0, -1) {
-        // dbg!(&entries, smallest);
-        // }
         for (d, val) in entries {
             result.insert(val, d == smallest);
         }
     }
 
-    // dbg!(&result);
     result
 }
 
@@ -82,7 +75,6 @@ fn find_max(input: &str) -> (usize, i32, i32) {
         }
         counts.push((visible.len(), *x, *y));
     }
-    // dbg!(&counts);
     counts.sort_by_key(|&t| t.0);
 
     counts[counts.len() - 1]
@@ -94,17 +86,14 @@ fn part1(input: &str) -> Result<usize> {
 
 fn part2(input: &str) -> Result<i32> {
     let (_, station_x, station_y) = find_max(input);
-    // dbg!((station_x, station_y));
     let asteroids = coordinates(input);
     let mut aset: HashSet<_> = asteroids.iter().clone().collect();
     aset.remove(&(station_x, station_y));
     let mut n = 1;
-    // let mut sweep = vec![];
 
     while aset.len() > 0 {
         let remaining: Vec<Coor> = aset.iter().map(|&(a, b)| (*a, *b)).collect();
         let visibility = visibility((station_x, station_y), &remaining[..]);
-        // dbg!(&visibility);
         let mut visible = vec![];
         for &(x, y) in &remaining {
             let dx = x - station_x;
@@ -127,11 +116,9 @@ fn part2(input: &str) -> Result<i32> {
                 _ => unreachable!("bad signum?"),
             };
             visible.push((quadrant, dx, dy, x, y));
-            // dbg!((x, y, dx, dy, quadrant));
         }
         visible.sort_by(|a, b| match a.0.cmp(&b.0) {
             Ordering::Less => Ordering::Less,
-            // Ordering::Equal => (a.1 * b.2).cmp(&(a.2 * b.1)),
             Ordering::Equal => (a.2 * b.1).cmp(&(a.1 * b.2)),
             Ordering::Greater => Ordering::Greater,
         });
@@ -140,25 +127,9 @@ fn part2(input: &str) -> Result<i32> {
             if n == 200 {
                 return Ok(entry.0 * 100 + entry.1);
             }
-            // if n == 1
-            //     || n == 2
-            //     || n == 3
-            //     || n == 10
-            //     || n == 20
-            //     || n == 50
-            //     || n == 100
-            //     || n == 199
-            //     || n == 200
-            //     || n == 201
-            //     || n == 299
-            // {
-            //     dbg!(n, &entry);
-            // }
             aset.remove(&entry);
             n += 1;
         }
-        // sweep.push(visible[0]);
-        // dbg!(visible);
     }
     bail!("Didn't get to 200");
 }
