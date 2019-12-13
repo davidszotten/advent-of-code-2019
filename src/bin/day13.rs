@@ -1,6 +1,7 @@
 use aoc2019::cpu::{set_memory, Cpu, CpuState};
 use aoc2019::{dispatch, Result};
 use failure::bail;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 fn main() -> Result<()> {
@@ -24,30 +25,28 @@ enum GameState {
     Halted,
 }
 
-fn tick(cpu: &mut Cpu) -> Result<GameState> {
+fn require_output(cpu: &mut Cpu, label: &str) -> Result<i64> {
+    Ok(match cpu.run()? {
+        CpuState::Output(value) => value,
+        _ => bail!("output missing for {}", label),
+    })
+}
+
+fn tick(mut cpu: &mut Cpu) -> Result<GameState> {
     let state = match cpu.run()? {
         CpuState::Output(x) => {
-            let y = match cpu.run()? {
-                CpuState::Output(value) => value,
-                _ => bail!("stopped before y"),
-            };
+            let y = require_output(&mut cpu, "y")?;
             if x == -1 {
-                let score = match cpu.run()? {
-                    CpuState::Output(value) => value,
-                    _ => bail!("stopped before score"),
-                };
+                let score = require_output(&mut cpu, "score")?;
                 GameState::Score(score)
             } else {
-                let tile = match cpu.run()? {
-                    CpuState::Output(value) => match value {
-                        0 => Tile::Empty,
-                        1 => Tile::Wall,
-                        2 => Tile::Block,
-                        3 => Tile::Paddle,
-                        4 => Tile::Ball,
-                        t => bail!("invalid tile {} ({}, {})", t, x, y),
-                    },
-                    _ => bail!("stopped before tile"),
+                let tile = match require_output(&mut cpu, "tile")? {
+                    0 => Tile::Empty,
+                    1 => Tile::Wall,
+                    2 => Tile::Block,
+                    3 => Tile::Paddle,
+                    4 => Tile::Ball,
+                    t => bail!("invalid tile {} ({}, {})", t, x, y),
                 };
                 GameState::Output(((x, y), tile))
             }
@@ -90,34 +89,33 @@ fn _draw(tiles: &HashMap<(i64, i64), Tile>) {
 fn part2(input: &str) -> Result<i64> {
     let mut cpu = Cpu::from_str(input);
     set_memory(&mut cpu, 0, 2);
-    let mut tiles = HashMap::new();
+    // let mut tiles = HashMap::new();
     let mut ball_x = 0;
     let mut paddle_x = 0;
     let mut score = 0;
     loop {
         match tick(&mut cpu)? {
             GameState::Output((pos, tile)) => {
-                tiles.insert(pos, tile);
+                // tiles.insert(pos, tile);
                 if tile == Tile::Ball {
                     ball_x = pos.0;
                 } else if tile == Tile::Paddle {
                     paddle_x = pos.0;
                 }
             }
-            GameState::Halted => {
-                break;
-            }
             GameState::NeedsInput => {
-                if ball_x < paddle_x {
-                    cpu.enqueue_input(-1);
-                } else if ball_x > paddle_x {
-                    cpu.enqueue_input(1);
-                } else {
-                    cpu.enqueue_input(0);
-                }
+                let input = match ball_x.cmp(&paddle_x) {
+                    Ordering::Less => -1,
+                    Ordering::Equal => 0,
+                    Ordering::Greater => 1,
+                };
+                cpu.enqueue_input(input);
             }
             GameState::Score(s) => {
                 score = s;
+            }
+            GameState::Halted => {
+                break;
             }
         }
     }
