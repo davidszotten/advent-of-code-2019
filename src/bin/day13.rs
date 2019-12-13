@@ -1,29 +1,13 @@
-use aoc2019::cpu::{Cpu, CpuState};
+use aoc2019::cpu::{set_memory, Cpu, CpuState};
 use aoc2019::{dispatch, Result};
-use failure::err_msg;
+use failure::bail;
 use std::collections::HashMap;
 
 fn main() -> Result<()> {
     dispatch(&part1, &part2)
 }
 
-fn output_or_halt(cpu: &mut Cpu) -> Result<Option<i64>> {
-    cpu.run().map(|s| match s {
-        CpuState::Output(value) => Some(value),
-        CpuState::NeedsInput => unreachable!("wants input"),
-        CpuState::Halted => None,
-    })
-}
-
-fn triple_or_halt(mut cpu: &mut Cpu) -> Result<Option<(i64, i64, i64)>> {
-    if let Some(v1) = output_or_halt(&mut cpu)? {
-        let v2 = output_or_halt(&mut cpu)?.ok_or(err_msg("halted before v2"))?;
-        let v3 = output_or_halt(&mut cpu)?.ok_or(err_msg("halted before v2"))?;
-        return Ok(Some((v1, v2, v3)));
-    }
-    Ok(None)
-}
-
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Tile {
     Empty,
     Wall,
@@ -32,17 +16,59 @@ enum Tile {
     Ball,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum GameState {
+    Output(((i64, i64), Tile)),
+    Score(i64),
+    NeedsInput,
+    Halted,
+}
+
+fn tick(cpu: &mut Cpu) -> Result<GameState> {
+    let state = match cpu.run()? {
+        CpuState::Output(x) => {
+            let y = match cpu.run()? {
+                CpuState::Output(value) => value,
+                _ => bail!("stopped before y"),
+            };
+            if x == -1 {
+                let score = match cpu.run()? {
+                    CpuState::Output(value) => value,
+                    _ => bail!("stopped before score"),
+                };
+                GameState::Score(score)
+            } else {
+                let tile = match cpu.run()? {
+                    CpuState::Output(value) => match value {
+                        0 => Tile::Empty,
+                        1 => Tile::Wall,
+                        2 => Tile::Block,
+                        3 => Tile::Paddle,
+                        4 => Tile::Ball,
+                        t => bail!("invalid tile {} ({}, {})", t, x, y),
+                    },
+                    _ => bail!("stopped before tile"),
+                };
+                GameState::Output(((x, y), tile))
+            }
+        }
+        CpuState::NeedsInput => GameState::NeedsInput,
+        CpuState::Halted => GameState::Halted,
+    };
+    Ok(state)
+}
+
 fn part1(input: &str) -> Result<usize> {
     let mut cpu = Cpu::from_str(input);
     let mut tiles = HashMap::new();
-    while let Some((x, y, tile)) = triple_or_halt(&mut cpu)? {
-        tiles.insert((x, y), tile);
+    while let GameState::Output((pos, tile)) = tick(&mut cpu)? {
+        tiles.insert(pos, tile);
     }
 
-    Ok(tiles.values().filter(|&&t| t == 2).count())
+    Ok(tiles.values().filter(|&&t| t == Tile::Block).count())
 }
 
-fn draw(tiles: &HashMap<(i64, i64), Tile>) {
+fn _draw(tiles: &HashMap<(i64, i64), Tile>) {
     let &(max_x, max_y) = tiles.keys().max().expect("empty");
     let &(min_x, min_y) = tiles.keys().min().expect("empty");
 
@@ -63,21 +89,39 @@ fn draw(tiles: &HashMap<(i64, i64), Tile>) {
 
 fn part2(input: &str) -> Result<i64> {
     let mut cpu = Cpu::from_str(input);
+    set_memory(&mut cpu, 0, 2);
     let mut tiles = HashMap::new();
-    while let Some((x, y, tile)) = triple_or_halt(&mut cpu)? {
-        let tile = match tile {
-            0 => Tile::Empty,
-            1 => Tile::Wall,
-            2 => Tile::Block,
-            3 => Tile::Paddle,
-            4 => Tile::Ball,
-            t => unreachable!("invalid tile {}", t),
-        };
-        tiles.insert((x, y), tile);
+    let mut ball_x = 0;
+    let mut paddle_x = 0;
+    let mut score = 0;
+    loop {
+        match tick(&mut cpu)? {
+            GameState::Output((pos, tile)) => {
+                tiles.insert(pos, tile);
+                if tile == Tile::Ball {
+                    ball_x = pos.0;
+                } else if tile == Tile::Paddle {
+                    paddle_x = pos.0;
+                }
+            }
+            GameState::Halted => {
+                break;
+            }
+            GameState::NeedsInput => {
+                if ball_x < paddle_x {
+                    cpu.enqueue_input(-1);
+                } else if ball_x > paddle_x {
+                    cpu.enqueue_input(1);
+                } else {
+                    cpu.enqueue_input(0);
+                }
+            }
+            GameState::Score(s) => {
+                score = s;
+            }
+        }
     }
-    draw(&tiles);
-
-    Ok(0)
+    Ok(score)
 }
 
 #[cfg(test)]
