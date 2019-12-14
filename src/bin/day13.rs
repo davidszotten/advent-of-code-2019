@@ -121,14 +121,3 @@ fn part2(input: &str) -> Result<i64> {
     }
     Ok(score)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_part1() -> Result<()> {
-        assert_eq!(part1("")?, 0);
-        Ok(())
-    }
-}
