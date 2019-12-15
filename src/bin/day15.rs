@@ -14,7 +14,7 @@ fn main() -> Result<()> {
 enum Tile {
     Wall,
     Open,
-    Destination,
+    Oxygen,
 }
 
 impl TryFrom<i64> for Tile {
@@ -26,7 +26,7 @@ impl TryFrom<i64> for Tile {
         match value {
             0 => Ok(Wall),
             1 => Ok(Open),
-            2 => Ok(Destination),
+            2 => Ok(Oxygen),
             n => bail!("Invalid direction: {}", n),
         }
     }
@@ -110,7 +110,7 @@ fn step(cpu: &mut Cpu, direction: Direction) -> Result<Tile> {
     }
 }
 
-fn part1(input: &str) -> Result<usize> {
+fn map(input: &str) -> Result<(HashMap<Coor, Tile>, Coor, usize)> {
     use Tile::*;
     let mut cpu = Cpu::from_str(input);
     let mut queue = vec![];
@@ -121,18 +121,23 @@ fn part1(input: &str) -> Result<usize> {
     let mut tried = HashMap::new();
     tried.insert(start, Tile::Open);
     let mut path: Vec<(Direction, Coor)> = vec![];
+    let mut oxygen: Option<(Coor, usize)> = None;
     loop {
         let (pos, direction, distance) = match queue.pop() {
             Some(entry) => entry,
             None => {
-                bail!("nowhere else to try");
+                if let Some(target) = oxygen {
+                    return Ok((tried, target.0, target.1));
+                } else {
+                    bail!("didn't find oxygen");
+                }
             }
         };
 
         while path.len() >= distance {
             let (direction, _) = path.pop().expect("path should not be empty");
             match step(&mut cpu, direction.opposite())? {
-                Open => {}
+                Open | Oxygen => {}
                 t => unreachable!("Unexpected tile when going back: {:?}", t),
             };
         }
@@ -141,8 +146,11 @@ fn part1(input: &str) -> Result<usize> {
 
         let response = step(&mut cpu, direction)?;
         tried.insert(next, response);
+        if response == Oxygen {
+            oxygen = Some((next, distance));
+        }
         match response {
-            Open => {
+            Open | Oxygen => {
                 path.push((direction, next));
                 for direction in &Direction::all() {
                     if tried.contains_key(&(next + direction.as_coor())) {
@@ -152,15 +160,40 @@ fn part1(input: &str) -> Result<usize> {
                 }
             }
             Wall => {}
-            Destination => {
-                return Ok(distance);
-            }
         }
     }
 }
 
-fn part2(_input: &str) -> Result<i32> {
-    Ok(0)
+fn part1(input: &str) -> Result<usize> {
+    map(input).map(|(_, _, d)| d)
+}
+
+fn part2(input: &str) -> Result<i32> {
+    use Tile::*;
+    let (mut tiles, oxygen, _) = map(input)?;
+    let mut minutes = 0;
+    let mut new_oxygen = vec![oxygen];
+    loop {
+        let mut next_oxygen = vec![];
+        for &coor in new_oxygen.iter() {
+            for direction in &Direction::all() {
+                let neighbour = coor + direction.as_coor();
+                match tiles.get(&neighbour) {
+                    Some(Open) => {
+                        tiles.insert(neighbour, Oxygen);
+                        next_oxygen.push(neighbour);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        new_oxygen = next_oxygen;
+        if new_oxygen.len() == 0 {
+            break;
+        }
+        minutes += 1;
+    }
+    Ok(minutes)
 }
 
 #[cfg(test)]
