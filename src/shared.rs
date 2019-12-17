@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 use failure::{bail, Error};
-use std::fmt::Debug;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{self, Read};
 use std::result;
@@ -72,8 +72,8 @@ type DayFunc<T> = dyn Fn(&str) -> Result<T>;
 
 fn run<S, T>(part1: &DayFunc<S>, part2: &DayFunc<T>) -> Result<String>
 where
-    S: Debug,
-    T: Debug,
+    S: Display,
+    T: Display,
 {
     let args = parse_input()?;
     let input = match args.source {
@@ -81,17 +81,17 @@ where
         Source::File(filename) => read_file(&filename),
     }?;
     match args.part {
-        Part::Part1 => part1(&input).map(|res| format!("{:?}", res)),
-        Part::Part2 => part2(&input).map(|res| format!("{:?}", res)),
+        Part::Part1 => part1(&input).map(|res| format!("{}", res)),
+        Part::Part2 => part2(&input).map(|res| format!("{}", res)),
     }
 }
 
 pub fn dispatch<S, T>(part1: &DayFunc<S>, part2: &DayFunc<T>) -> Result<()>
 where
-    S: Debug,
-    T: Debug,
+    S: Display,
+    T: Display,
 {
     let result = run(part1, part2)?;
-    println!("{:?}", result);
+    println!("{}", result);
     Ok(())
 }
