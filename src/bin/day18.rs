@@ -44,28 +44,25 @@ fn parse(input: &str) -> (HashMap<Coor, Tile>, Coor) {
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct State {
     pos: Coor,
-    keys: HashSet<char>,
+    keys: u32,
     distance: usize,
 }
 
 impl State {
-    fn new(pos: &Coor, keys: &HashSet<char>, distance: usize) -> Self {
+    fn new(pos: &Coor, keys: u32, distance: usize) -> Self {
         Self {
             pos: pos.clone(),
-            keys: keys.clone(),
+            keys,
             distance,
         }
     }
 
-    fn seen_key(&self) -> (Coor, String) {
-        let mut keys: Vec<_> = self.keys.iter().collect();
-        keys.sort();
-
-        (self.pos, keys.iter().map(|&&c| c).collect::<String>())
+    fn seen_key(&self) -> (Coor, u32) {
+        (self.pos, self.keys)
     }
 }
 
-fn key_bits(key: char) -> i32 {
+fn key_bits(key: char) -> u32 {
     1 << (key as u8 - 'a' as u8)
 }
 
@@ -91,27 +88,28 @@ fn part1(input: &str) -> Result<usize> {
     let keys = map
         .values()
         .filter_map(|v| match v {
-            Tile::Key(c) => Some(*c),
+            Tile::Key(c) => Some(key_bits(*c)),
             _ => None,
         })
-        .collect::<HashSet<char>>();
+        .sum();
 
     // dbg!(&keys);
     let mut seen = HashSet::new();
     let mut queue = VecDeque::new();
-    queue.push_back(State::new(&entrance, &HashSet::new(), 0));
+    queue.push_back(State::new(&entrance, 0, 0));
     while let Some(mut state) = queue.pop_front() {
-        // dbg!(&state.distance);
-        // dbg!(&state.seen_key().1);
+        if state.distance > 1000 {
+            // break;
+            // println!("{}", &state.distance);
+            // println!("{:#b}", &state.seen_key().1);
+            // println!("{}", &state.seen_key().1.count_ones());
+        }
         seen.insert(state.seen_key());
-        match map
-            .get(&state.pos)
-            .expect(&format!("not in map: {:?}", state.pos).to_string())
-        {
+        match map.get(&state.pos).expect("not in map") {
             Tile::Open => {}
             Tile::Wall => unreachable!("wall"),
             Tile::Key(c) => {
-                state.keys.insert(*c);
+                state.keys |= key_bits(*c);
             }
             Tile::Door(_) => {}
         }
@@ -132,13 +130,13 @@ fn part1(input: &str) -> Result<usize> {
             if !match *map.get(&new_pos).expect("not in map") {
                 Tile::Open => true,
                 Tile::Key(_) => true,
-                Tile::Door(c) => state.keys.contains(&c),
+                Tile::Door(c) => state.keys & key_bits(c) != 0,
                 Tile::Wall => false,
             } {
                 continue;
             }
 
-            let new_state = State::new(&new_pos, &state.keys, state.distance + 1);
+            let new_state = State::new(&new_pos, state.keys, state.distance + 1);
             if !seen.contains(&new_state.seen_key()) {
                 queue.push_back(new_state);
             }
@@ -147,7 +145,7 @@ fn part1(input: &str) -> Result<usize> {
     Ok(0)
 }
 
-fn part2(_input: &str) -> Result<i32> {
+fn part2(_input: &str) -> Result<u32> {
     Ok(0)
 }
 
