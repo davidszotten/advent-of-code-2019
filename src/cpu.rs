@@ -97,6 +97,7 @@ pub enum CpuState {
     Halted,
 }
 
+#[derive(Clone)]
 pub struct Cpu {
     pc: usize,
     program: Vec<i64>,

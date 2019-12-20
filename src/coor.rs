@@ -3,12 +3,12 @@ use std::ops::{Add, AddAssign};
 
 #[derive(PartialEq, Eq, Default, Clone, Copy, Hash)]
 pub struct Coor {
-    pub x: i32,
-    pub y: i32,
+    pub x: i64,
+    pub y: i64,
 }
 
 impl Coor {
-    pub fn new(x: i32, y: i32) -> Self {
+    pub fn new(x: i64, y: i64) -> Self {
         Coor { x, y }
     }
 }
