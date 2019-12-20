@@ -52,7 +52,7 @@ fn read_map(cpu: &mut Cpu) -> Result<HashMap<Coor, Tile>> {
     }
 }
 
-fn part1(input: &str) -> Result<i32> {
+fn part1(input: &str) -> Result<i64> {
     let mut cpu = Cpu::from_str(input);
     let map = read_map(&mut cpu)?;
     let mut alignment = 0;
