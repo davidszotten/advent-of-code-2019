@@ -104,6 +104,7 @@ pub struct Cpu {
     input: VecDeque<i64>,
     relative_base: i64,
     memory: HashMap<i64, i64>,
+    time: usize,
 }
 
 impl Cpu {
@@ -114,6 +115,7 @@ impl Cpu {
             input: VecDeque::new(),
             relative_base: 0,
             memory: HashMap::new(),
+            time: 0,
         }
     }
 
@@ -160,6 +162,7 @@ impl Cpu {
 
     pub fn run(&mut self) -> Result<CpuState> {
         let state = loop {
+            self.time += 1;
             let op = Op::try_from(self.program[self.pc])?;
             // dbg!(self.pc, &op, &self.program);
             use Op::*;
@@ -252,6 +255,40 @@ impl Cpu {
             }
         };
         Ok(state)
+    }
+
+    pub fn expect_ascii(&mut self, text: &str) -> Result<()> {
+        for expected in text.chars() {
+            match self.run()? {
+                CpuState::Output(value) => {
+                    let received = value as u8 as char;
+                    if expected != received {
+                        bail!("char mismatch, expected {}, got {}", expected, received);
+                    }
+                }
+                state => bail!("Unexpected cpu state {:?}", state),
+            }
+        }
+        Ok(())
+    }
+
+    pub fn write_ascii(&mut self, text: &str) {
+        for c in text.chars().map(|c| c as u8 as i64) {
+            self.enqueue_input(c);
+        }
+    }
+
+    pub fn read_ascii(&mut self) -> Result<CpuState> {
+        loop {
+            match self.run()? {
+                CpuState::Output(value) => print!("{}", value as u8 as char),
+                s => break Ok(s),
+            }
+        }
+    }
+
+    pub fn time_elapsed(&self) -> usize {
+        self.time
     }
 }
 

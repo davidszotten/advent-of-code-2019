@@ -76,26 +76,6 @@ fn part1(input: &str) -> Result<i64> {
     Ok(alignment)
 }
 
-fn expect(cpu: &mut Cpu, text: &str) -> Result<()> {
-    for expected in text.chars() {
-        match cpu.run()? {
-            CpuState::Output(value) => {
-                if expected != value as u8 as char {
-                    bail!("char mismatch, expected {}, got {}", expected, value);
-                }
-            }
-            state => bail!("Unexpected cpu state {:?}", state),
-        }
-    }
-    Ok(())
-}
-
-fn write(cpu: &mut Cpu, text: &str) {
-    for c in text.chars().map(|c| c as u8 as i64) {
-        cpu.enqueue_input(c);
-    }
-}
-
 fn part2(input: &str) -> Result<i64> {
     let mut cpu = Cpu::from_str(input);
     set_memory(&mut cpu, 0, 2);
@@ -121,16 +101,16 @@ fn part2(input: &str) -> Result<i64> {
     // R,10,L,12,R,10,
     // L,10,R,8,R,8
 
-    expect(&mut cpu, "Main:\n")?;
-    write(&mut cpu, "A,A,B,C,B,C,B,C,C,A\n");
-    expect(&mut cpu, "Function A:\n")?;
-    write(&mut cpu, "L,10,R,8,R,8\n");
-    expect(&mut cpu, "Function B:\n")?;
-    write(&mut cpu, "L,10,L,12,R,8,R,10\n");
-    expect(&mut cpu, "Function C:\n")?;
-    write(&mut cpu, "R,10,L,12,R,10\n");
-    expect(&mut cpu, "Continuous video feed?\n")?;
-    write(&mut cpu, "n\n");
+    cpu.expect_ascii("Main:\n")?;
+    cpu.write_ascii("A,A,B,C,B,C,B,C,C,A\n");
+    cpu.expect_ascii("Function A:\n")?;
+    cpu.write_ascii("L,10,R,8,R,8\n");
+    cpu.expect_ascii("Function B:\n")?;
+    cpu.write_ascii("L,10,L,12,R,8,R,10\n");
+    cpu.expect_ascii("Function C:\n")?;
+    cpu.write_ascii("R,10,L,12,R,10\n");
+    cpu.expect_ascii("Continuous video feed?\n")?;
+    cpu.write_ascii("n\n");
 
     // while let CpuState::Output(value) = cpu.run()? {
     //     print!("{}", value as u8 as char);
