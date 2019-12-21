@@ -67,17 +67,23 @@ impl State {
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct State4 {
     pos: [Coor; 4],
-    prev: [Coor; 4],
+    // prev: [Coor; 4],
     robot: usize,
     keys: u32,
     distance: usize,
 }
 
 impl State4 {
-    fn new(pos: [Coor; 4], prev: [Coor; 4], robot: usize, keys: u32, distance: usize) -> Self {
+    fn new(
+        pos: [Coor; 4],
+        // prev: [Coor; 4],
+        robot: usize,
+        keys: u32,
+        distance: usize,
+    ) -> Self {
         Self {
             pos: pos.clone(),
-            prev: prev.clone(),
+            // prev: prev.clone(),
             robot,
             keys,
             distance,
@@ -235,12 +241,16 @@ fn part2(input: &str) -> Result<usize> {
     let mut queue = VecDeque::new();
     queue.push_back(State4::new(
         [entrance1, entrance2, entrance3, entrance4],
-        [entrance1, entrance2, entrance3, entrance4],
+        // [entrance1, entrance2, entrance3, entrance4],
         0,
         0,
         0,
     ));
+
     while let Some(mut state) = queue.pop_front() {
+        // if state.robot == 0 {
+        //     dbg!(&state.pos[0], state.keys);
+        // }
         if state.distance > 10 {
             // break;
             // println!("{}", &state.distance);
@@ -250,7 +260,7 @@ fn part2(input: &str) -> Result<usize> {
         // if state.robot == 0 {
         //     dbg!((&state.pos[0], &state.prev[0]));
         // }
-        // seen[state.robot].insert(state.seen_key());
+        seen[state.robot].insert(state.seen_key());
         let mut found_key = false;
         // match map.get(&state.pos[state.robot]).expect("not in map") {
         match map_v[coor_key(&state.pos[state.robot])] {
@@ -259,6 +269,7 @@ fn part2(input: &str) -> Result<usize> {
             Tile::Key(c) => {
                 if state.keys & key_bits(c) == 0 {
                     found_key = true;
+                    dbg!(&state);
                 }
                 state.keys |= key_bits(c);
             }
@@ -278,14 +289,14 @@ fn part2(input: &str) -> Result<usize> {
         ];
 
         for robot in 0..4 {
-            if neighbours
-                .iter()
-                .filter(|n| map_v[coor_key(&(state.pos[robot] + **n))] == Tile::Wall)
-                .count()
-                < 2
-            {
-                seen[state.robot].insert(state.seen_key());
-            }
+            // if neighbours
+            //     .iter()
+            //     .filter(|n| map_v[coor_key(&(state.pos[robot] + **n))] == Tile::Wall)
+            //     .count()
+            //     < 2
+            // {
+            //     seen[state.robot].insert(state.seen_key());
+            // }
 
             for mv in neighbours.iter() {
                 let mut new_pos = state.pos.clone();
@@ -298,12 +309,17 @@ fn part2(input: &str) -> Result<usize> {
                 } {
                     continue;
                 }
-                if !found_key && new_pos[robot] == state.prev[robot] {
-                    continue;
-                }
+                // if !found_key && new_pos[robot] == state.prev[robot] {
+                //     continue;
+                // }
 
-                let new_state =
-                    State4::new(new_pos, state.pos, robot, state.keys, state.distance + 1);
+                let new_state = State4::new(
+                    new_pos,
+                    // state.pos,
+                    robot,
+                    state.keys,
+                    state.distance + 1,
+                );
                 if !seen[new_state.robot].contains(&new_state.seen_key()) {
                     // if found_key || new_pos[robot] != state.prev[robot] {
                     queue.push_back(new_state);
