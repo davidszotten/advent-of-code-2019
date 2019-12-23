@@ -278,10 +278,14 @@ impl Cpu {
         }
     }
 
-    pub fn read_ascii(&mut self) -> Result<CpuState> {
+    pub fn read_ascii(&mut self, output: bool) -> Result<CpuState> {
         loop {
             match self.run()? {
-                CpuState::Output(value) => print!("{}", value as u8 as char),
+                CpuState::Output(value) => {
+                    if output {
+                        print!("{}", value as u8 as char)
+                    }
+                }
                 s => break Ok(s),
             }
         }
