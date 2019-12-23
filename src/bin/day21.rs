@@ -10,46 +10,32 @@ fn main() -> Result<()> {
 }
 
 /*
-OR A T
-OR B J
-OR B T
+
 NOT C T
-NOT J J
-OR T J
-NOT J J
-NOT J T
-NOT J T
 NOT A J
 OR T J
-AND C T
-OR A T
 AND D J
+
 */
 
 fn part1(input: &str) -> Result<i32> {
     let mut cpu = Cpu::from_str(input);
     cpu.expect_ascii("Input instructions:\n")?;
+
+    /*
+       T: ~C
+       J: (~A | ~C) & D
+    */
     cpu.write_ascii(
         "\
-OR B J
-OR B T
 NOT C T
-NOT J J
-OR T J
-NOT J J
-NOT J T
-NOT J T
 NOT A J
 OR T J
-AND C T
-OR A T
 AND D J
 WALK\n",
     );
-    cpu.expect_ascii("\nWalking...\n")?;
+    cpu.expect_ascii("\nWalking...\n\n")?;
     dbg!(cpu.run()?);
-    dbg!(cpu.run()?);
-    dbg!(cpu.time_elapsed());
     Ok(0)
 }
 fn part2(input: &str) -> Result<i32> {
