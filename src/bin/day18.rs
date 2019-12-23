@@ -176,6 +176,80 @@ fn reachable_keys(map: &[Tile], keys: u32, start: Coor) -> Vec<Reachable> {
     reachable
 }
 
+fn requirements(map: &[Tile], start: &Coor, end: &Coor) -> Option<(u32, usize)> {
+    let mut seen = HashSet::new();
+    let mut queue = VecDeque::new();
+    queue.push_back((*start, 0, 0));
+    while let Some((pos, keys, distance)) = queue.pop_front() {
+        seen.insert(pos);
+        let neighbours = [
+            Coor::new(-1, 0),
+            Coor::new(1, 0),
+            Coor::new(0, -1),
+            Coor::new(0, 1),
+        ];
+
+        for mv in neighbours.iter() {
+            let new_pos = pos + *mv;
+            let mut key = 0;
+            match map[coor_key(&new_pos)] {
+                Tile::Open => {}
+                Tile::Key(_) => {}
+                Tile::Door(c) => key = key_bits(c),
+                Tile::Wall => continue,
+            }
+            if new_pos == *end {
+                return Some((keys, distance + 1));
+            }
+
+            if seen.contains(&new_pos) {
+                continue;
+            }
+            queue.push_back((new_pos, keys | key, distance + 1));
+        }
+    }
+    None
+}
+
+fn all_requirements(
+    map: &HashMap<Coor, Tile>,
+    entrance: Coor,
+) -> HashMap<Coor, Vec<(Coor, u32, usize)>> {
+    let mut keys_coors: Vec<_> = map
+        .iter()
+        .filter_map(|(c, v)| match v {
+            Tile::Key(_) => Some(*c),
+            _ => None,
+        })
+        .collect();
+    keys_coors.push(entrance);
+    let map_v = map_vec(&map);
+    let mut reqs = HashMap::new();
+    for left in keys_coors.iter() {
+        let mut reachable = vec![];
+        for right in keys_coors.iter() {
+            if right == left {
+                continue;
+            }
+            dbg!(left, right);
+            if let Some((keys, distance)) = requirements(&map_v, left, right) {
+                reachable.push((*right, keys, distance));
+            }
+        }
+        reachable.sort_by_key(|&(_, _, d)| d);
+        reqs.insert(*left, reachable);
+    }
+    reqs
+}
+
+fn map_vec(map: &HashMap<Coor, Tile>) -> Vec<Tile> {
+    let mut map_v = vec![Tile::Wall; 100 * 100];
+    for (coor, tile) in map {
+        map_v[coor_key(coor)] = *tile;
+    }
+    map_v
+}
+
 fn part1(input: &str) -> Result<usize> {
     let (map, entrance) = parse(input);
     let keys = map
@@ -185,11 +259,7 @@ fn part1(input: &str) -> Result<usize> {
             _ => None,
         })
         .sum();
-    let mut map_v = vec![Tile::Wall; 100 * 100];
-    for (coor, tile) in &map {
-        map_v[coor_key(coor)] = *tile;
-    }
-
+    let map_v = map_vec(&map);
     let mut shortest = None;
     // first find reachable keys, then just bfs key choices
 
@@ -382,6 +452,60 @@ mod tests {
 #########"
             )?,
             8
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_requirements() -> Result<()> {
+        let (map, _entrance) = parse(
+            "\
+#########
+#b.A.@.a#
+#########",
+        );
+        let map_v = map_vec(&map);
+        assert_eq!(
+            requirements(&map_v, &Coor::new(5, 1), &Coor::new(1, 1)),
+            Some((key_bits('a'), 4))
+        );
+        assert_eq!(
+            requirements(&map_v, &Coor::new(5, 1), &Coor::new(7, 1)),
+            Some((0, 2))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_all_requirements() -> Result<()> {
+        let (map, entrance) = parse(
+            "\
+#########
+#b.A.@.a#
+#########",
+        );
+        assert_eq!(
+            all_requirements(&map, entrance),
+            [
+                (
+                    Coor::new(5, 1),
+                    vec![(Coor::new(7, 1), 0, 2), (Coor::new(1, 1), key_bits('a'), 4)]
+                ),
+                (
+                    Coor::new(1, 1),
+                    vec![
+                        (Coor::new(5, 1), key_bits('a'), 4),
+                        (Coor::new(7, 1), key_bits('a'), 6),
+                    ]
+                ),
+                (
+                    Coor::new(7, 1),
+                    vec![(Coor::new(5, 1), 0, 2), (Coor::new(1, 1), key_bits('a'), 6)]
+                ),
+            ]
+            .iter()
+            .cloned()
+            .collect()
         );
         Ok(())
     }
