@@ -121,61 +121,6 @@ fn coor_key(coor: &Coor) -> usize {
     (100 * coor.x + coor.y) as usize
 }
 
-#[derive(Debug)]
-struct Reachable {
-    pos: Coor,
-    label: char,
-    distance: usize,
-}
-
-fn reachable_keys(map: &[Tile], keys: u32, start: Coor) -> Vec<Reachable> {
-    let mut reachable = vec![];
-    let mut seen = HashSet::new();
-    let mut queue = VecDeque::new();
-    queue.push_back((start, 0));
-    while let Some((pos, distance)) = queue.pop_front() {
-        seen.insert(pos);
-        match map[coor_key(&pos)] {
-            Tile::Wall => unreachable!("wall"),
-            Tile::Key(c) => {
-                if keys & key_bits(c) == 0 {
-                    reachable.push(Reachable {
-                        pos,
-                        label: c,
-                        distance,
-                    });
-                    continue;
-                }
-            }
-            Tile::Door(_) | Tile::Open => {}
-        }
-        let neighbours = [
-            Coor::new(-1, 0),
-            Coor::new(1, 0),
-            Coor::new(0, -1),
-            Coor::new(0, 1),
-        ];
-
-        for mv in neighbours.iter() {
-            let new_pos = pos + *mv;
-            if !match map[coor_key(&new_pos)] {
-                Tile::Open => true,
-                Tile::Key(_) => true,
-                Tile::Door(c) => keys & key_bits(c) != 0,
-                Tile::Wall => false,
-            } {
-                continue;
-            }
-
-            if seen.contains(&new_pos) {
-                continue;
-            }
-            queue.push_back((new_pos, distance + 1));
-        }
-    }
-    reachable
-}
-
 fn requirements(map: &[Tile], start: &Coor, end: &Coor) -> Option<(u32, usize)> {
     let mut seen = HashSet::new();
     let mut queue = VecDeque::new();
@@ -211,33 +156,45 @@ fn requirements(map: &[Tile], start: &Coor, end: &Coor) -> Option<(u32, usize)> 
     None
 }
 
-fn all_requirements(
-    map: &HashMap<Coor, Tile>,
-    entrance: Coor,
-) -> HashMap<Coor, Vec<(Coor, u32, usize)>> {
-    let mut keys_coors: Vec<_> = map
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct Reachable {
+    pos: Coor,
+    required_keys: u32,
+    key: u32,
+    distance: usize,
+}
+
+fn all_requirements(map: &HashMap<Coor, Tile>, entrance: Coor) -> HashMap<Coor, Vec<Reachable>> {
+    let mut keys_coors: Vec<(Coor, u32)> = map
         .iter()
         .filter_map(|(c, v)| match v {
-            Tile::Key(_) => Some(*c),
+            Tile::Key(k) => Some((*c, key_bits(*k))),
             _ => None,
         })
         .collect();
-    keys_coors.push(entrance);
+    keys_coors.push((entrance, 0));
     let map_v = map_vec(&map);
     let mut reqs = HashMap::new();
-    for left in keys_coors.iter() {
+    for &(left, _) in keys_coors.iter() {
         let mut reachable = vec![];
-        for right in keys_coors.iter() {
+        for &(right, key) in keys_coors.iter() {
             if right == left {
                 continue;
             }
-            dbg!(left, right);
-            if let Some((keys, distance)) = requirements(&map_v, left, right) {
-                reachable.push((*right, keys, distance));
+            if right == entrance {
+                continue;
+            }
+            if let Some((required_keys, distance)) = requirements(&map_v, &left, &right) {
+                reachable.push(Reachable {
+                    pos: right,
+                    required_keys,
+                    key,
+                    distance,
+                });
             }
         }
-        reachable.sort_by_key(|&(_, _, d)| d);
-        reqs.insert(*left, reachable);
+        reachable.sort_by_key(|r| r.distance);
+        reqs.insert(left, reachable);
     }
     reqs
 }
@@ -259,54 +216,114 @@ fn part1(input: &str) -> Result<usize> {
             _ => None,
         })
         .sum();
-    let map_v = map_vec(&map);
-    let mut shortest = None;
     // first find reachable keys, then just bfs key choices
+    let reachable_map = all_requirements(&map, entrance);
 
-    // dbg!(&keys);
-    let mut seen = HashSet::new();
+    let mut shortest = None;
+    /* let mut seen = HashSet::new(); */
+    let mut seens = HashMap::new();
     let mut queue = VecDeque::new();
-    for reachable in reachable_keys(&map_v, 0, entrance) {
+    for reachable in reachable_map.get(&entrance).expect("entrance missing") {
+        if reachable.required_keys != 0 {
+            continue;
+        }
         queue.push_back(State::new(
             &reachable.pos,
             &entrance,
-            key_bits(reachable.label),
+            reachable.key,
             reachable.distance,
         ));
     }
+    let mut max_ones = 0;
     while let Some(state) = queue.pop_front() {
+        /* dbg!(&state); */
+        let ones = state.keys.count_ones();
+        if ones > max_ones {
+            max_ones = ones;
+            dbg!(ones);
+        }
         if state.distance > 1000 {
-            // break;
+            /* break; */
             // println!("{}", &state.distance);
             // println!("{:#b}", &state.seen_key().1);
             // println!("{}", &state.seen_key().1.count_ones());
         }
         if state.keys == keys {
             // dbg!(state.history);
-            // return Ok(state.distance);
+            /* return Ok(state.distance); */
             // dbg!(state.distance);
             shortest = Some(match shortest {
                 None => state.distance,
                 Some(d) => min(d, state.distance),
             })
         }
-        seen.insert(state.seen_key());
+        /* seen.insert(state.seen_key()); */
+        seens
+            .entry(state.pos)
+            .or_insert(HashSet::new())
+            .insert(state.keys);
 
-        dbg!(&state);
-        for reachable in reachable_keys(&map_v, state.keys, state.pos) {
+        if let Some(dist) = shortest {
+            if state.distance > dist {
+                continue;
+            }
+        }
+
+        /* let tile = map_v[coor_key(pos)]; */
+        /* let key =  */
+
+        /* dbg!(&state); */
+        for reachable in reachable_map.get(&state.pos).expect("pos missing") {
+            /* dbg!(&reachable); */
+            if reachable.pos == entrance {
+                println!("skip; entrance");
+                continue;
+            }
             // dbg!(&reachable);
+            // 0011 -> 1100    0001
+            if !state.keys & reachable.required_keys != 0 {
+                /* println!("skip; not enough keys");         */
+                /* println!("{:b}", state.keys);              */
+                /* println!("{:b}", reachable.required_keys); */
+                continue;
+            }
+
+            /* if !state.keys & reachable.key != 0 { */
+            if state.keys | reachable.key == state.keys {
+                /* println!("skip; already have it"); */
+                /* println!("{:b}", state.keys); */
+                /* println!("{:b}", reachable.key); */
+                /* println!("{:b}", !state.keys); */
+                /* println!("{:b}", !state.keys & reachable.key); */
+                /* println!("{:b}", state.keys | !reachable.key); */
+                continue;
+            }
+
             let new_state = State::new(
                 &reachable.pos,
                 &state.pos,
-                state.keys | key_bits(reachable.label),
+                state.keys | reachable.key,
                 state.distance + reachable.distance,
             );
-            if !seen.contains(&new_state.seen_key()) {
+            /* dbg!(seen.len()); */
+            /* if !seen.contains(&new_state.seen_key()) { */
+            if !seens.contains_key(&new_state.pos)
+                || !seens
+                    .get(&new_state.pos)
+                    .expect("contains but no get")
+                    .contains(&new_state.keys)
+            {
+                /* dbg!(&new_state); */
+                /* dbg!(&new_state.keys.count_ones()); */
                 queue.push_back(new_state);
+            } else {
+                /* println!("skip; seen"); */
             }
         }
+        queue.sort();
     }
     Ok(shortest.expect("nothing found"))
+    /* Ok(0) */
 }
 
 fn part2(input: &str) -> Result<usize> {
@@ -489,18 +506,54 @@ mod tests {
             [
                 (
                     Coor::new(5, 1),
-                    vec![(Coor::new(7, 1), 0, 2), (Coor::new(1, 1), key_bits('a'), 4)]
+                    vec![
+                        Reachable {
+                            pos: Coor::new(7, 1),
+                            required_keys: 0,
+                            key: key_bits('a'),
+                            distance: 2
+                        },
+                        Reachable {
+                            pos: Coor::new(1, 1),
+                            required_keys: key_bits('a'),
+                            key: key_bits('b'),
+                            distance: 4
+                        }
+                    ]
                 ),
                 (
                     Coor::new(1, 1),
                     vec![
-                        (Coor::new(5, 1), key_bits('a'), 4),
-                        (Coor::new(7, 1), key_bits('a'), 6),
+                        Reachable {
+                            pos: Coor::new(5, 1),
+                            required_keys: key_bits('a'),
+                            key: 0,
+                            distance: 4
+                        },
+                        Reachable {
+                            pos: Coor::new(7, 1),
+                            required_keys: key_bits('a'),
+                            key: key_bits('a'),
+                            distance: 6
+                        },
                     ]
                 ),
                 (
                     Coor::new(7, 1),
-                    vec![(Coor::new(5, 1), 0, 2), (Coor::new(1, 1), key_bits('a'), 6)]
+                    vec![
+                        Reachable {
+                            pos: Coor::new(5, 1),
+                            required_keys: 0,
+                            key: 0,
+                            distance: 2
+                        },
+                        Reachable {
+                            pos: Coor::new(1, 1),
+                            required_keys: key_bits('a'),
+                            key: key_bits('b'),
+                            distance: 6
+                        }
+                    ]
                 ),
             ]
             .iter()
@@ -510,7 +563,7 @@ mod tests {
         Ok(())
     }
 
-    // #[test]
+    #[test]
     fn test_part1b1() -> Result<()> {
         assert_eq!(
             part1(
@@ -521,7 +574,8 @@ mod tests {
 #.....@.a.B.c.d.A.e.F.g#
 ########################" //  5    10    15   20
             )?,
-            132
+            /* 132 */
+            0
         );
         Ok(())
     }
@@ -553,7 +607,8 @@ mod tests {
 ###g#h#i################
 ########################"
             )?,
-            81
+            /* 81 */
+            0
         );
         Ok(())
     }
