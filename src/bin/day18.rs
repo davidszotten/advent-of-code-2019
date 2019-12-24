@@ -1,6 +1,7 @@
 use aoc2019::coor::Coor;
 use aoc2019::{dispatch, Result};
-use std::cmp::min;
+/* use std::cmp::min; */
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 fn main() -> Result<()> {
@@ -47,21 +48,43 @@ struct State {
     pos: Coor,
     prev: Coor,
     keys: u32,
+    most_recent_key: u32,
     distance: usize,
 }
 
 impl State {
-    fn new(pos: &Coor, prev: &Coor, keys: u32, distance: usize) -> Self {
+    fn new(pos: &Coor, prev: &Coor, keys: u32, most_recent_key: u32, distance: usize) -> Self {
         Self {
             pos: pos.clone(),
             prev: prev.clone(),
             keys,
+            most_recent_key,
             distance,
         }
     }
 
     fn seen_key(&self) -> (Coor, u32) {
-        (self.pos, self.keys)
+        (self.pos, self.most_recent_key)
+    }
+    // fn seen_keyX(&self) -> (Coor, u32) {
+    //     (self.pos, self.keys)
+    // }
+    // fn seen_keyY(&self) -> i64 {
+    //     (self.pos.x as i64) << (32 + 16) + (self.pos.y as i64) << 32 + self.keys
+    // }
+
+    // could we just use most recently acquired key?
+}
+
+impl Ord for State {
+    fn cmp(&self, other: &State) -> Ordering {
+        other.distance.cmp(&self.distance)
+    }
+}
+
+impl PartialOrd for State {
+    fn partial_cmp(&self, other: &State) -> Option<Ordering> {
+        Some(other.distance.cmp(&self.distance))
     }
 }
 
@@ -219,55 +242,62 @@ fn part1(input: &str) -> Result<usize> {
     // first find reachable keys, then just bfs key choices
     let reachable_map = all_requirements(&map, entrance);
 
-    let mut shortest = None;
-    /* let mut seen = HashSet::new(); */
-    let mut seens = HashMap::new();
+    /* let mut shortest = None; */
+    let mut seen = HashSet::new();
+    /* let mut seens = HashMap::new(); */
     let mut queue = VecDeque::new();
+    /* let mut queue = vec![]; */
     for reachable in reachable_map.get(&entrance).expect("entrance missing") {
         if reachable.required_keys != 0 {
             continue;
         }
+        /* dbg!(&reachable); */
         queue.push_back(State::new(
+            /* queue.push(State::new( */
             &reachable.pos,
             &entrance,
+            reachable.key,
             reachable.key,
             reachable.distance,
         ));
     }
+    /* queue.sort(); */
     let mut max_ones = 0;
+    /* while let Some(state) = queue.pop() { */
     while let Some(state) = queue.pop_front() {
-        /* dbg!(&state); */
+        /* dbg!(&state.distance); */
+        /* println!("{:b}", &state.keys); */
         let ones = state.keys.count_ones();
         if ones > max_ones {
             max_ones = ones;
-            dbg!(ones);
+            /* dbg!(ones); */
         }
-        if state.distance > 1000 {
-            /* break; */
+        if state.distance > 600 {
+            break;
             // println!("{}", &state.distance);
             // println!("{:#b}", &state.seen_key().1);
             // println!("{}", &state.seen_key().1.count_ones());
         }
         if state.keys == keys {
             // dbg!(state.history);
-            /* return Ok(state.distance); */
+            return Ok(state.distance);
             // dbg!(state.distance);
-            shortest = Some(match shortest {
-                None => state.distance,
-                Some(d) => min(d, state.distance),
-            })
+            // shortest = Some(match shortest {
+            //     None => state.distance,
+            //     Some(d) => min(d, state.distance),
+            // })
         }
-        /* seen.insert(state.seen_key()); */
-        seens
-            .entry(state.pos)
-            .or_insert(HashSet::new())
-            .insert(state.keys);
+        seen.insert(state.seen_key());
+        /* seens */
+        /* .entry(state.pos) */
+        /* .or_insert(HashSet::new()) */
+        /* .insert(state.keys); */
 
-        if let Some(dist) = shortest {
-            if state.distance > dist {
-                continue;
-            }
-        }
+        // if let Some(dist) = shortest {
+        //     if state.distance > dist {
+        //         continue;
+        //     }
+        // }
 
         /* let tile = map_v[coor_key(pos)]; */
         /* let key =  */
@@ -303,27 +333,34 @@ fn part1(input: &str) -> Result<usize> {
                 &reachable.pos,
                 &state.pos,
                 state.keys | reachable.key,
+                reachable.key,
                 state.distance + reachable.distance,
             );
             /* dbg!(seen.len()); */
-            /* if !seen.contains(&new_state.seen_key()) { */
-            if !seens.contains_key(&new_state.pos)
-                || !seens
-                    .get(&new_state.pos)
-                    .expect("contains but no get")
-                    .contains(&new_state.keys)
-            {
+            if !seen.contains(&new_state.seen_key()) {
+                /* if new_state.pos == Coor(77, 17) { */
+                /*     dbg!(see                       */
+                /* }                                  */
+
+                /* if !seens.contains_key(&new_state.pos) */
+                /* || !seens */
+                /* .get(&new_state.pos) */
+                /* .expect("contains but no get") */
+                /* .contains(&new_state.keys) */
+                /* { */
                 /* dbg!(&new_state); */
                 /* dbg!(&new_state.keys.count_ones()); */
                 queue.push_back(new_state);
+            /* let idx = queue.binary_search(&new_state).unwrap_or_else(|x| x); */
+
+            /* queue.insert(idx, new_state); */
             } else {
                 /* println!("skip; seen"); */
             }
         }
-        queue.sort();
     }
-    Ok(shortest.expect("nothing found"))
-    /* Ok(0) */
+    /* Ok(shortest.expect("nothing found")) */
+    Ok(0)
 }
 
 fn part2(input: &str) -> Result<usize> {
