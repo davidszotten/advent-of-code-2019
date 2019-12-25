@@ -1,5 +1,6 @@
 use aoc2019::{dispatch, Result};
-use failure::{bail, err_msg, Error};
+use failure::{bail, Error};
+use std::ops;
 use std::str::FromStr;
 
 type CardInt = i64;
@@ -23,6 +24,10 @@ fn mod_inverse(a: CardInt, m: CardInt) -> CardInt {
     }
     // m is added to handle negative x
     (x % m + m) % m
+}
+
+fn mod_div(a: CardInt, b: CardInt, m: CardInt) -> CardInt {
+    mod_mul(a, mod_inverse(b, m), m)
 }
 
 fn mod_mul(a: CardInt, b: CardInt, m: CardInt) -> CardInt {
@@ -51,8 +56,52 @@ enum Shuffle {
     Deal(i64),
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+struct Variable {
+    x: CardInt,
+    c: CardInt,
+    m: CardInt,
+}
+
+impl Variable {
+    fn new(x: CardInt, c: CardInt, m: CardInt) -> Self {
+        Self {
+            x: (x + m) % m,
+            c: (c + m) % m,
+            m,
+        }
+    }
+
+    fn eval(&self, card: CardInt) -> CardInt {
+        (mod_mul(self.x, card, self.m) + self.c + self.m) % self.m
+    }
+
+    fn invert(&self) -> Self {
+        // y = xc +b -> x = y/c - b/c
+        Variable::new(
+            mod_div(1, self.x, self.m),
+            mod_div(-self.c, self.x, self.m),
+            self.m,
+        )
+    }
+}
+
+impl ops::Mul for Variable {
+    type Output = Variable;
+    fn mul(self, other: Variable) -> Variable {
+        // (ax + c)(bx + d) = a(bx+d) +c = abx + ad + c
+        assert_eq!(self.m, other.m);
+        let m = self.m;
+        Variable::new(
+            mod_mul(self.x, other.x, m),
+            mod_mul(self.x, other.c, m) + self.c,
+            m,
+        )
+    }
+}
+
 impl Shuffle {
-    fn apply(&self, cards: Vec<CardInt>) -> Vec<CardInt> {
+    fn _apply(&self, cards: Vec<CardInt>) -> Vec<CardInt> {
         let mut new = cards.clone();
         match *self {
             Shuffle::NewStack => {
@@ -74,27 +123,35 @@ impl Shuffle {
         new
     }
 
-    fn apply_reverse_to(&self, card: CardInt, len: CardInt) -> CardInt {
+    fn apply_to(&self, card: CardInt, len: CardInt) -> CardInt {
         match *self {
-            Shuffle::NewStack => len - 1 - card,
-            Shuffle::Cut(amount) if amount >= 0 => {
-                if card < len - amount {
-                    card + amount
-                } else {
-                    card - (len - amount)
-                }
-            }
-            Shuffle::Cut(amount) if amount < 0 => {
-                let amount = amount.abs();
+            Shuffle::NewStack => (len - 1 - card) % len,
+            Shuffle::Cut(amount) => (card - amount + len) % len,
+            Shuffle::Deal(amount) => mod_mul(card, amount, len),
+        }
+    }
 
-                if card < amount {
-                    len - amount + card
-                } else {
-                    card - amount
-                }
-            }
-            Shuffle::Cut(_) => unreachable!(),
-            Shuffle::Deal(amount) => mod_mul(card, mod_inverse(amount, len), len),
+    fn apply_to_variable(&self, card: Variable, len: CardInt) -> Variable {
+        // v = x + c
+        // NewStack: -1 -v  -> -1 -(c+x) -> -x -1 -c ->
+        // Cut(amount): v - amount -> x + c -amount
+        // Deal(amount): amount * v -> amount *x + amount * c
+        match *self {
+            Shuffle::NewStack => Variable::new(-card.x, -1 - card.c, len),
+            Shuffle::Cut(amount) => Variable::new(card.x, card.c - amount, len),
+            Shuffle::Deal(amount) => Variable::new(
+                mod_mul(card.x, amount, len),
+                mod_mul(card.c, amount, len),
+                len,
+            ),
+        }
+    }
+
+    fn _apply_reverse_to(&self, card: CardInt, len: CardInt) -> CardInt {
+        match *self {
+            Shuffle::NewStack => (len - 1 - card) % len,
+            Shuffle::Cut(amount) => card + amount % len,
+            Shuffle::Deal(amount) => mod_div(card, amount, len),
         }
     }
 }
@@ -124,21 +181,29 @@ fn main() -> Result<()> {
     dispatch(&part1, &part2)
 }
 
-fn run(shuffles: Vec<Shuffle>, size: CardInt) -> Vec<CardInt> {
+fn _run(shuffles: Vec<Shuffle>, size: CardInt) -> Vec<CardInt> {
     let mut cards: Vec<CardInt> = (0..size).collect();
     for shuffle in shuffles {
-        cards = shuffle.apply(cards);
+        cards = shuffle._apply(cards);
     }
     cards
 }
 
-fn run2(shuffles: &Vec<Shuffle>, size: CardInt, card: CardInt, times: usize) -> CardInt {
+fn apply(shuffles: &[Shuffle], size: CardInt, card: CardInt) -> Result<CardInt> {
+    let mut card = card;
+    for shuffle in shuffles {
+        card = shuffle.apply_to(card, size);
+    }
+    Ok(card)
+}
+
+fn _run2(shuffles: &Vec<Shuffle>, size: CardInt, card: CardInt, times: usize) -> CardInt {
     let mut shuffles = shuffles.clone();
     let mut card = card;
     shuffles.reverse();
     for _ in 0..times {
         for shuffle in &shuffles {
-            card = shuffle.apply_reverse_to(card, size);
+            card = shuffle._apply_reverse_to(card, size);
         }
     }
     card
@@ -151,33 +216,36 @@ fn parse(input: &str) -> Result<Vec<Shuffle>> {
         .collect::<Result<Vec<Shuffle>>>()
 }
 
-fn part1(input: &str) -> Result<usize> {
+fn part1(input: &str) -> Result<i64> {
     let shuffles = parse(input)?;
-    // Ok(run2(&shuffles, 10007, 2019))
-    let cards = run(shuffles, 10007);
-    cards
-        .iter()
-        .enumerate()
-        .filter(|&(_, &c)| c == 2019)
-        .map(|(i, _)| i)
-        .next()
-        .ok_or(err_msg("not found"))
+    apply(&shuffles, 10007, 2019)
 }
 
 fn part2(input: &str) -> Result<i64> {
     let shuffles = parse(input)?;
-    let mut card = 2020;
-    // println!("{}", run2(&shuffles, 119315717514047, card, 1));
-    // println!("{}", run2(&shuffles, 119315717514047, card, 2));
-    // println!("{}", run2(&shuffles, 119315717514047, card, 3));
-    for i in 0..100_000 {
-        card = run2(&shuffles, 119315717514047, card, 1);
-        if card == 2020 {
-            dbg!(i);
-        };
+    let len = 119315717514047;
+    let mut card = Variable::new(1, 0, len);
+    for shuffle in &shuffles {
+        card = shuffle.apply_to_variable(card, len);
     }
-    // Ok(run2(&shuffles, 119315717514047, 2020))
-    Ok(0)
+    /* dbg!(&card); */
+    /* dbg!((mod_mul(2019, card.x, len) + card.c) % len); */
+    /* dbg!(mod_div(8326 - card.c, card.x, len)); */
+    /* dbg!(card.eval(2019)); */
+    /* dbg!(card.invert().eval(8326)); */
+
+    let mut pow = card;
+
+    let times: i64 = 101741582076661;
+    let digits = format!("{:b}", times).chars().rev().collect::<Vec<_>>();
+    let mut total = Variable::new(1, 0, len);
+    for digit in digits.into_iter() {
+        if digit == '1' {
+            total = total * pow;
+        }
+        pow = pow * pow;
+    }
+    Ok(total.invert().eval(2020))
 }
 
 #[cfg(test)]
@@ -201,13 +269,52 @@ mod tests {
     }
 
     #[test]
-    fn test_part1() -> Result<()> {
+    fn test_part1a() -> Result<()> {
+        let shuffles = parse("deal into new stack")?;
+        assert_eq!(apply(&shuffles, 10, 0)?, 9);
+        assert_eq!(apply(&shuffles, 10, 1)?, 8);
+        assert_eq!(apply(&shuffles, 10, 9)?, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_part1b() -> Result<()> {
+        let shuffles = parse("cut 3")?;
+        assert_eq!(apply(&shuffles, 10, 0)?, 7);
+        assert_eq!(apply(&shuffles, 10, 1)?, 8);
+        assert_eq!(apply(&shuffles, 10, 9)?, 6);
+        Ok(())
+    }
+
+    #[test]
+    fn test_part1c() -> Result<()> {
+        let shuffles = parse("cut -4")?;
+        assert_eq!(apply(&shuffles, 10, 0)?, 6);
+        assert_eq!(apply(&shuffles, 10, 1)?, 7);
+        assert_eq!(apply(&shuffles, 10, 9)?, 5);
+        Ok(())
+    }
+
+    #[test]
+    fn test_part1d() -> Result<()> {
+        let shuffles = parse("deal with increment 3")?;
+        assert_eq!(apply(&shuffles, 10, 0)?, 0);
+        assert_eq!(apply(&shuffles, 10, 1)?, 3);
+        assert_eq!(apply(&shuffles, 10, 9)?, 7);
+        Ok(())
+    }
+
+    #[test]
+    fn test_part1e() -> Result<()> {
         let shuffles = parse(
-            "deal with increment 7
-deal into new stack
+            "deal with increment 3
 deal into new stack",
         )?;
-        assert_eq!(run(shuffles, 10), vec![0, 3, 6, 9, 2, 5, 8, 1, 4, 7]);
+        // 0 7 4 1 8 5 2 9 6 3
+        // 3 6 9 2 5 8 1 4 7 0
+        assert_eq!(apply(&shuffles, 10, 0)?, 9);
+        assert_eq!(apply(&shuffles, 10, 1)?, 6);
+        assert_eq!(apply(&shuffles, 10, 9)?, 2);
         Ok(())
     }
 
@@ -293,7 +400,24 @@ deal into new stack",
     }
 
     #[test]
-    fn test_ex2() -> Result<()> {
+    fn test_exb1() -> Result<()> {
+        let shuffles = parse(
+            "cut 6
+deal with increment 7
+deal into new stack",
+        )?;
+        // 0 1 2 3 4 5 6 7 8 9
+        // 6 7 8 9 0 1 2 3 4 5
+        // 6 9 2 5 8 1 4 7 0 3
+        // 3 0 7 4 1 8 5 2 9 6
+        assert_eq!(apply(&shuffles, 10, 0)?, 1);
+        assert_eq!(apply(&shuffles, 10, 1)?, 4);
+        assert_eq!(apply(&shuffles, 10, 9)?, 8);
+        Ok(())
+    }
+
+    #[test]
+    fn test_exb2() -> Result<()> {
         let shuffles = parse(
             "cut 6
 deal with increment 7
@@ -339,4 +463,12 @@ cut -2",
     }
     // 101741582076661
     // 119315717514047
+
+    #[test]
+    fn test_part1() -> Result<()> {
+        assert_eq!(apply(&shuffles, 10, 0)?, 9);
+        assert_eq!(apply(&shuffles, 10, 1)?, 8);
+        assert_eq!(apply(&shuffles, 10, 9)?, 0);
+        Ok(())
+    }
 }
