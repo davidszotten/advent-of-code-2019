@@ -39,7 +39,7 @@ fn next(cells: &[bool]) -> Vec<bool> {
         .collect()
 }
 
-fn draw(cells: &[bool]) {
+fn _draw(cells: &[bool]) {
     for y in 0..SIZE {
         for x in 0..SIZE {
             print!(
