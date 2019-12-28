@@ -1,5 +1,6 @@
 use aoc2019::coor::Coor;
 use aoc2019::{dispatch, Result};
+use failure::err_msg;
 use std::cmp::Ordering;
 // use std::cmp::{min, Ordering};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -52,7 +53,7 @@ struct State {
 }
 
 impl State {
-    fn new(pos: &Coor, prev: &Coor, keys: u32, distance: usize) -> Self {
+    fn _new(pos: &Coor, prev: &Coor, keys: u32, distance: usize) -> Self {
         Self {
             pos: pos.clone(),
             prev: prev.clone(),
@@ -61,7 +62,7 @@ impl State {
         }
     }
 
-    fn seen_key(&self) -> (Coor, u32) {
+    fn _seen_key(&self) -> (Coor, u32) {
         (self.pos, self.keys)
     }
 }
@@ -83,7 +84,7 @@ struct State4 {
 // }
 
 impl State4 {
-    fn new(pos: [Coor; 4], _prev: [Coor; 4], robot: usize, keys: u32, distance: usize) -> Self {
+    fn _new(pos: [Coor; 4], _prev: [Coor; 4], robot: usize, keys: u32, distance: usize) -> Self {
         Self {
             pos: pos.clone(),
             // prev: prev.clone(),
@@ -146,6 +147,68 @@ fn key_bits(key: char) -> u32 {
     1 << (key as u8 - 'a' as u8)
 }
 
+fn _key_char(key: u32) -> char {
+    let mut n = 1;
+    let mut key = key;
+    while key > 1 {
+        n += 1;
+        key >>= 1;
+    }
+    (n - 1 + 'a' as u8) as char
+}
+
+#[derive(PartialEq, Eq, Clone)]
+struct StateL {
+    order: Vec<char>,
+    keys: HashSet<char>,
+    distance: usize,
+}
+
+impl StateL {
+    fn _new(prev: &StateL, next: char, distance: usize) -> Self {
+        let mut order = prev.order.clone();
+        order.push(next);
+        let mut keys = prev.keys.clone();
+        assert!(!keys.contains(&next));
+        keys.insert(next);
+
+        StateL {
+            order,
+            keys,
+            distance: prev.distance + distance,
+        }
+    }
+
+    fn _first() -> Self {
+        StateL {
+            order: vec![],
+            keys: HashSet::new(),
+            distance: 0,
+        }
+    }
+}
+
+impl std::hash::Hash for StateL {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.keys
+            .iter()
+            .fold(0, |a, &x| a | key_bits(x))
+            .hash(state);
+    }
+}
+
+impl Ord for StateL {
+    fn cmp(&self, other: &StateL) -> Ordering {
+        other.distance.cmp(&self.distance)
+    }
+}
+
+impl PartialOrd for StateL {
+    fn partial_cmp(&self, other: &StateL) -> Option<Ordering> {
+        Some(other.distance.cmp(&self.distance))
+    }
+}
+
 // fn available(map: &HashMap<Coor, Tile>, state: &State) -> Vec<Coor> {
 //     [
 //         Coor::new(-1, 0),
@@ -167,11 +230,15 @@ fn coor_key(coor: &Coor) -> usize {
     (100 * coor.x + coor.y) as usize
 }
 
-fn requirements(map: &[Tile], start: &Coor, end: &Coor) -> Option<(u32, usize)> {
+fn _requirements(
+    map: &[Tile],
+    start: &Coor,
+    end: &Coor,
+) -> Option<(HashSet<char>, HashSet<char>, usize)> {
     let mut seen = HashSet::new();
     let mut queue = VecDeque::new();
-    queue.push_back((*start, 0, 0));
-    while let Some((pos, keys, distance)) = queue.pop_front() {
+    queue.push_back((*start, HashSet::new(), HashSet::new(), 0));
+    while let Some((pos, required_keys, found_keys, distance)) = queue.pop_front() {
         seen.insert(pos);
         let neighbours = [
             Coor::new(-1, 0),
@@ -182,21 +249,30 @@ fn requirements(map: &[Tile], start: &Coor, end: &Coor) -> Option<(u32, usize)> 
 
         for mv in neighbours.iter() {
             let new_pos = pos + *mv;
-            let mut key = 0;
+            let mut required_key = None;
+            let mut found_key = None;
             match map[coor_key(&new_pos)] {
                 Tile::Open => {}
-                Tile::Key(_) => {}
-                Tile::Door(c) => key = key_bits(c),
+                Tile::Key(c) => found_key = Some(c),
+                Tile::Door(c) => required_key = Some(c),
                 Tile::Wall => continue,
             }
             if new_pos == *end {
-                return Some((keys, distance + 1));
+                return Some((required_keys, found_keys, distance + 1));
             }
 
             if seen.contains(&new_pos) {
                 continue;
             }
-            queue.push_back((new_pos, keys | key, distance + 1));
+            let mut required_keys2 = required_keys.clone();
+            let mut found_keys2 = found_keys.clone();
+            if let Some(required_key) = required_key {
+                required_keys2.insert(required_key);
+            }
+            if let Some(found_key) = found_key {
+                found_keys2.insert(found_key);
+            }
+            queue.push_back((new_pos, required_keys2, found_keys2, distance + 1));
         }
     }
     None
@@ -205,19 +281,20 @@ fn requirements(map: &[Tile], start: &Coor, end: &Coor) -> Option<(u32, usize)> 
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct Reachable {
     pos: Coor,
-    required_keys: u32,
-    key: u32,
+    required_keys: HashSet<char>,
+    found_keys: HashSet<char>,
+    key: char,
     distance: usize,
 }
 
-fn all_requirements(
+fn _all_requirements(
     map: &HashMap<Coor, Tile>,
-    entrances: &[Coor; 4],
+    entrances: &[Coor],
 ) -> HashMap<Coor, Vec<Reachable>> {
-    let mut keys_coors: Vec<(Coor, u32)> = map
+    let keys_coors: Vec<(Coor, char)> = map
         .iter()
         .filter_map(|(c, v)| match v {
-            Tile::Key(k) => Some((*c, key_bits(*k))),
+            Tile::Key(k) => Some((*c, *k)),
             _ => None,
         })
         .collect();
@@ -228,12 +305,13 @@ fn all_requirements(
     //         _ => Some(*c),
     //     })
     //     .collect();
+    let mut starts = keys_coors.iter().map(|(c, _)| *c).collect::<Vec<_>>();
     for entrance in entrances {
-        keys_coors.push((*entrance, 0));
+        starts.push(*entrance);
     }
     let map_v = map_vec(&map);
     let mut reqs = HashMap::new();
-    for &(left, _) in keys_coors.iter() {
+    for &left in starts.iter() {
         // for &left in walkable_coors.iter() {
         let mut reachable = vec![];
         'right: for &(right, key) in keys_coors.iter() {
@@ -245,10 +323,13 @@ fn all_requirements(
                     continue 'right;
                 }
             }
-            if let Some((required_keys, distance)) = requirements(&map_v, &left, &right) {
+            if let Some((required_keys, found_keys, distance)) =
+                _requirements(&map_v, &left, &right)
+            {
                 reachable.push(Reachable {
                     pos: right,
                     required_keys,
+                    found_keys,
                     key,
                     distance,
                 });
@@ -268,92 +349,7 @@ fn map_vec(map: &HashMap<Coor, Tile>) -> Vec<Tile> {
     map_v
 }
 
-fn part1(input: &str) -> Result<usize> {
-    let (map, entrance) = parse(input);
-    let keys = map
-        .values()
-        .filter_map(|v| match v {
-            Tile::Key(c) => Some(key_bits(*c)),
-            _ => None,
-        })
-        .sum();
-    // let coor_key = |coor: &Coor| (100 * coor.x + coor.y) as usize;
-    // let mut map_v = vec![Tile::Wall; 100 * 100];
-    // for (coor, tile) in &map {
-    //     map_v[coor_key(coor)] = *tile;
-    // }
-    let map_v = map_vec(&map);
-
-    // dbg!(&keys);
-    let mut seen = HashSet::new();
-    let mut queue = VecDeque::new();
-    queue.push_back(State::new(&entrance, &entrance, 0, 0));
-    while let Some(mut state) = queue.pop_front() {
-        if state.distance > 1000 {
-            // break;
-            // println!("{}", &state.distance);
-            // println!("{:#b}", &state.seen_key().1);
-            // println!("{}", &state.seen_key().1.count_ones());
-        }
-        let mut found_key = false;
-        // match map.get(&state.pos).expect("not in map") {
-        match map_v[coor_key(&state.pos)] {
-            Tile::Open => {}
-            Tile::Wall => unreachable!("wall"),
-            Tile::Key(c) => {
-                if state.keys & key_bits(c) == 0 {
-                    found_key = true;
-                    state.keys |= key_bits(c);
-                }
-            }
-            Tile::Door(_) => {}
-        }
-        if state.keys == keys {
-            return Ok(state.distance);
-        }
-        // for new in available(&map, &state) {
-        //
-
-        let neighbours = [
-            Coor::new(-1, 0),
-            Coor::new(1, 0),
-            Coor::new(0, -1),
-            Coor::new(0, 1),
-        ];
-
-        if neighbours
-            .iter()
-            .filter(|n| map_v[coor_key(&(state.pos + **n))] == Tile::Wall)
-            .count()
-            < 2
-        {
-            seen.insert(state.seen_key());
-        }
-
-        for mv in neighbours.iter() {
-            let new_pos = state.pos + *mv;
-            if !match map_v[coor_key(&new_pos)] {
-                Tile::Open => true,
-                Tile::Key(_) => true,
-                Tile::Door(c) => state.keys & key_bits(c) != 0,
-                Tile::Wall => false,
-            } {
-                continue;
-            }
-
-            let new_state = State::new(&new_pos, &state.pos, state.keys, state.distance + 1);
-            if !found_key && new_pos == state.prev {
-                continue;
-            }
-            if !seen.contains(&new_state.seen_key()) {
-                queue.push_back(new_state);
-            }
-        }
-    }
-    Ok(0)
-}
-
-fn switch_entrance(map: HashMap<Coor, Tile>, entrance: Coor) -> (HashMap<Coor, Tile>, [Coor; 4]) {
+fn _switch_entrance(map: HashMap<Coor, Tile>, entrance: Coor) -> (HashMap<Coor, Tile>, [Coor; 4]) {
     let mut map = map;
 
     map.insert(entrance + Coor::new(-1, -1), Tile::Open);
@@ -376,7 +372,7 @@ fn switch_entrance(map: HashMap<Coor, Tile>, entrance: Coor) -> (HashMap<Coor, T
     (map, entrances)
 }
 
-fn find_all_keys(map: &HashMap<Coor, Tile>) -> u32 {
+fn _find_all_keys(map: &HashMap<Coor, Tile>) -> u32 {
     map.values()
         .filter_map(|v| match v {
             Tile::Key(c) => Some(key_bits(*c)),
@@ -385,314 +381,142 @@ fn find_all_keys(map: &HashMap<Coor, Tile>) -> u32 {
         .sum()
 }
 
+fn find_all_keys2(map: &HashMap<Coor, Tile>) -> HashSet<char> {
+    map.values()
+        .filter_map(|v| match v {
+            Tile::Key(c) => Some(*c),
+            _ => None,
+        })
+        .collect()
+}
+
 // 2006 too high
 // 2114 ?!
-enum Action {
+enum _Action {
     Insert,
     Replace,
     Skip,
 }
 
-fn part2(input: &str) -> Result<usize> {
-    let (map, entrance) = parse(input);
-    let (map, entrances) = switch_entrance(map, entrance);
+fn find_from(
+    map: &HashMap<Coor, Tile>,
+    reachable_map: &HashMap<Coor, Vec<Reachable>>,
+    all_keys: &HashSet<char>,
+    key: char,
+    keys: HashSet<char>,
+    mut cache: &mut HashMap<(char, Vec<char>), usize>,
+) -> Option<usize> {
+    // assume we're at `key`, and have everything but `keys`
 
-    let keys = find_all_keys(&map);
-    let reachable_map = all_requirements(&map, &entrances);
-    // let map_v = map_vec(&map);
+    // println!("find_from {}: {}", key, &keys.iter().collect::<String>());
 
-    let mut seen = HashSet::new();
-    // dbg!(&reachable_map);
-    let mut queue = vec![];
-    queue.push(State4::new(entrances, entrances, 0, 0, 0));
-    let mut steps = 0;
-    while let Some(state) = queue.pop() {
-        steps += 1;
-        if steps % 1 == 0 {
-            dbg!(&state);
-            dbg!(&queue.len());
-        }
-        seen.insert(state.clone());
-        // seen.insert(state.keys);
-        for robot in 0..4 {
-            if let Some(reachables) = reachable_map.get(&state.pos[robot]) {
-                for reachable in reachables.iter() {
-                    if state.keys & reachable.key != 0 {
-                        continue;
-                    }
-                    if !state.keys & reachable.required_keys != 0 {
-                        continue;
-                    }
-                    let mut new_pos = state.pos.clone();
-                    new_pos[robot] = reachable.pos;
-                    let new_state = State4::new(
-                        new_pos,
-                        state.pos,
-                        robot,
-                        state.keys | reachable.key,
-                        state.distance + reachable.distance,
-                    );
-                    if new_state.keys == keys {
-                        dbg!(&new_state);
-                        return Ok(new_state.distance);
-                    }
-                    if seen.contains(&new_state) {
-                        // return Ok(1);
-                        continue;
-                    }
-                    seen.insert(new_state.clone());
-                    let idx = queue.binary_search(&new_state).unwrap_or_else(|x| x);
-                    let mut action = Action::Insert;
-                    // dbg!("insert", idx);
-                    // for offset in 0..1 {
-                    // for offset in 0..min(2, idx) {
-                    // if let Some(found) = queue.get(idx - offset) {
-                    if let Some(found) = queue.get(idx) {
-                        if found.pos == new_state.pos {
-                            // println!("{} {}", found.display_keys(), new_state.display_keys());
-                            if found.keys == new_state.keys {
-                                // dbg!(&found);
-                                // dbg!(&new_state);
-                                assert!(new_state.distance >= found.distance);
-                                action = Action::Skip;
-                            // dbg!("skip", idx);
-                            } else {
-                                if ((!new_state.keys) & found.keys) == 0 {
-                                    // dbg!(&found);
-                                    // dbg!(&new_state);
-                                    assert!(new_state.distance <= found.distance);
-                                    action = Action::Replace;
-                                // dbg!("replace", idx);
-                                } else if (new_state.keys & (!found.keys)) == 0 {
-                                    assert!(new_state.distance >= found.distance);
-                                    action = Action::Skip;
-                                    // dbg!("skip", idx);
-                                }
-                            }
-                        }
-                    }
-                    // }
-                    match action {
-                        Action::Replace => queue[idx] = new_state,
-                        Action::Insert => {
-                            /*
-                            if new_state.pos
-                                == [
-                                    Coor::new(1, 17),
-                                    Coor::new(11, 43),
-                                    Coor::new(53, 11),
-                                    Coor::new(49, 41),
-                                ]
-                                && new_state.distance == 1466
-                            // && new_state.keys == 8392845
-                            {
-                                dbg!(idx);
-                                let found = &queue[idx];
-                                dbg!(&new_state);
-                                // dbg!(&queue.get(idx - 1));
-                                dbg!(&found);
-                                // dbg!(&queue.get(idx + 1));
-
-                                dbg!(new_state.display_keys());
-                                dbg!(found.display_keys());
-                                dbg!(!new_state.keys & found.keys);
-                                dbg!(new_state.keys & !found.keys);
-                                // return Ok(1);
-                            }
-                            */
-                            queue.insert(idx, new_state);
-                        }
-                        Action::Skip => {}
-                    }
-                    // dbg!(&queue);
-                }
-            }
-        }
+    if keys.is_empty() {
+        return Some(0);
     }
-    Ok(0)
+    let mut key_v: Vec<_> = (&keys).iter().map(|&c| c).collect();
+    key_v.sort();
+    if let Some(&distance) = cache.get(&(key, key_v.clone())) {
+        return Some(distance);
+    }
+
+    let key_coor = map
+        .iter()
+        .filter_map(|(k, &v)| if v == Tile::Key(key) { Some(k) } else { None })
+        .next()
+        .expect("key not found");
+
+    let reachables = match reachable_map.get(&key_coor) {
+        None => {
+            // println!(
+            //     "find_from {}: {} [None]",
+            //     key,
+            //     &keys.iter().collect::<String>()
+            // );
+            return None;
+        }
+        Some(reachables) => reachables,
+    };
+    // dbg!(&reachables);
+
+    reachables
+        .iter()
+        .filter(|r| keys.contains(&r.key))
+        // .inspect(|r| {
+        //     let mut have = keys.clone();
+        //     have.insert(key);
+        //     dbg!(key);
+        //     dbg!(&have);
+        //     dbg!(&r.required_keys);
+        //     dbg!(r.required_keys.difference(&have).collect::<String>());
+        //     dbg!(&have.difference(&r.required_keys).collect::<String>());
+        // })
+        .filter(|r| {
+            let mut have: HashSet<_> = all_keys.difference(&keys).cloned().collect();
+            have.insert(key);
+
+            if key == 'a' && keys == "cdfeg".chars().collect() && r.key == 'c' {
+                // dbg!(
+                //     key,
+                //     &keys,
+                //     &r,
+                //     &have,
+                //     r.required_keys.difference(&have).count() == 0
+                // );
+            }
+
+            r.required_keys.difference(&have).count() == 0
+        })
+        .filter_map(|r| {
+            let mut new_set: HashSet<char> = keys.difference(&r.found_keys).cloned().collect();
+            new_set.remove(&r.key);
+            find_from(&map, &reachable_map, all_keys, r.key, new_set, &mut cache)
+                .map(|d| d + r.distance)
+        })
+        // .inspect(|r| {})
+        .min()
+        .map(|distance| {
+            cache.insert((key, key_v), distance);
+
+            // println!(
+            //     "find_from {}: {} [{}]",
+            //     key,
+            //     &keys.iter().collect::<String>(),
+            //     distance
+            // );
+            distance
+        })
 }
 
-fn _part2x(input: &str) -> Result<usize> {
-    let (map, entrance) = parse(input);
-    let (map, entrances) = switch_entrance(map, entrance);
-
-    let keys = find_all_keys(&map);
-    let mut key_quadrants = [0; 4];
-
-    for (coor, tile) in &map {
-        if let Tile::Door(c) = tile {
-            if coor.x < entrance.x && coor.y < entrance.y {
-                key_quadrants[0] |= key_bits(*c);
-            }
-            if coor.x < entrance.x && coor.y > entrance.y {
-                key_quadrants[1] |= key_bits(*c);
-            }
-            if coor.x > entrance.x && coor.y < entrance.y {
-                key_quadrants[2] |= key_bits(*c);
-            }
-            if coor.x > entrance.x && coor.y > entrance.y {
-                key_quadrants[3] |= key_bits(*c);
-            }
-        }
-    }
-    // println!("{:b}", key_quadrants[0]);
-    // println!("{:b}", key_quadrants[1]);
-    // println!("{:b}", key_quadrants[2]);
-    // println!("{:b}", key_quadrants[3]);
-
-    // let mut map_v = vec![Tile::Wall; 100 * 100];
-    // let mut seen_by_coor = vec![None; 100 * 100];
-    // for (coor, tile) in &map {
-    // map_v[coor_key(coor)] = *tile;
-    // }
-    let map_v = map_vec(&map);
-    let reachable_map = all_requirements(&map, &entrances);
-
-    // dbg!(&keys);
-    let mut seen = [
-        HashSet::new(),
-        HashSet::new(),
-        HashSet::new(),
-        HashSet::new(),
-    ];
-    let mut queue = VecDeque::new();
-    queue.push_back(State4::new(entrances, entrances, 0, 0, 0));
-    /* let mut steps = 0; */
-    /* let mut max_dist = 0; */
-    while let Some(mut state) = queue.pop_front() {
-        /* if state.distance > max_dist { */
-        // if steps % 1_000_000 == 0 {
-        //     /* max_dist = state.distance; */
-        //     /* dbg!(state.distance); */
-        //     dbg!(steps / 1_000_000, &state);
-        // }
-        /* steps += 1; */
-        if state.distance > 500 {
-            /* break; */
-            // println!("{}", &state.distance);
-            // println!("{:#b}", &state.seen_key().1);
-            // println!("{}", &state.seen_key().1.count_ones());
-        }
-        // if state.robot == 0 {
-        //     dbg!((&state.pos[0], &state.prev[0]));
-        // }
-        dbg!(state.robot, state.pos[state.robot], state.keys,);
-        // seen[state.robot].insert(state.seen_key(key_quadrants[state.robot]));
-        // seen[state.robot].insert(state.seen_key());
-        let mut _found_key = false;
-        // match map.get(&state.pos[state.robot]).expect("not in map") {
-        match map_v[coor_key(&state.pos[state.robot])] {
-            Tile::Open => {}
-            Tile::Wall => unreachable!("wall"),
-            Tile::Key(c) => {
-                if state.keys & key_bits(c) == 0 {
-                    _found_key = true;
-                }
-                state.keys |= key_bits(c);
-            }
-            Tile::Door(_) => {}
-        }
-        if state.keys == keys {
-            return Ok(state.distance);
-        }
-        // for new in available(&map, &state) {
-        //
-
-        dbg!(&state);
-        // if state.robot == 2 {
-        // dbg!(&state);
-        // }
-
-        let neighbours = [
-            Coor::new(-1, 0),
-            Coor::new(1, 0),
-            Coor::new(0, -1),
-            Coor::new(0, 1),
-        ];
-
-        // for robot in 0..4 {
-        //     dbg!(reachable_map.get(&state.pos[robot]));
-        // }
-        // return Ok(0);
-        for robot in 0..4 {
-            let n_reachable = reachable_map
-                .get(&state.pos[robot])
-                .unwrap_or(&vec![])
-                .iter()
-                .filter(|r| r.required_keys & !state.keys == 0)
-                .count();
-            dbg!(robot, n_reachable);
-            if n_reachable == 0 {
-                continue;
-            }
-            // let n_neighbours = neighbours
-            //     .iter()
-            //     .filter(|n| map_v[coor_key(&(state.pos[robot] + **n))] == Tile::Wall)
-            //     .count();
-            // if n_neighbours < 2 {
-            if true {
-                seen[state.robot].insert(state._seen_key());
-            // seen[state.robot].insert(state.seen_key(key_quadrants[state.robot]));
-            /* dbg!(&seen_by_coor[coor_key(&state.pos[robot])]); */
-            // if seen_by_coor[coor_key(&state.pos[robot])] == None {
-            //     seen_by_coor[coor_key(&state.pos[robot])] = Some(HashSet::new());
-            // }
-            // seen_by_coor[coor_key(&state.pos[robot])]
-            //     .as_mut()
-            //     .expect("no set?")
-            //     .insert(state.keys);
-            /* dbg!(&seen_by_coor[coor_key(&state.pos[robot])]); */
-            } else {
-                /* dbg!(                                      */
-                /*     "not enought neighbours at {:?} ({})", */
-                /*     state.pos[robot],                      */
-                /*     n_neighbours                           */
-                /* );                                         */
-            }
-
-            for mv in neighbours.iter() {
-                let mut new_pos = state.pos.clone();
-                new_pos[robot] += *mv;
-                if !match map_v[coor_key(&new_pos[robot])] {
-                    Tile::Open => true,
-                    Tile::Key(_) => true,
-                    Tile::Door(c) => state.keys & key_bits(c) != 0,
-                    Tile::Wall => false,
-                } {
-                    continue;
-                }
-                // if !found_key && new_pos[robot] == state.prev[robot] {
-                // continue;
-                // }
-
-                let new_state =
-                    State4::new(new_pos, state.pos, robot, state.keys, state.distance + 1);
-                if !seen[new_state.robot]
-                    // .contains(&new_state.seen_key(key_quadrants[new_state.robot]))
-                    .contains(&new_state._seen_key())
-                {
-                    // dbg!(
-                    //     new_state.keys,
-                    //     new_state.robot,
-                    //     new_state.pos[new_state.robot]
-                    // );
-                    // dbg!(&seen_by_coor[coor_key(&new_state.pos[new_state.robot])]);
-                    /* if seen_by_coor[coor_key(&new_state.pos[new_state.robot])] == None */
-                    //     || !seen_by_coor[coor_key(&new_state.pos[new_state.robot])]
-                    //         .as_ref()
-                    //         .expect("wasn't none?")
-                    //         .contains(&new_state.keys)
-                    // {
-                    // if found_key || new_pos[robot] != state.prev[robot] {
-                    /* dbg!("yes"); */
-                    queue.push_back(new_state);
-                } else {
-                    /* dbg!("no"); */
-                }
-            }
-        }
-    }
+fn part2(_input: &str) -> Result<usize> {
     Ok(0)
+}
+fn part1(input: &str) -> Result<usize> {
+    let (map, entrance) = parse(input);
+    // let (map, _entrances) = switch_entrance(map, entrance);
+    let reachable_map = _all_requirements(&map, &[entrance]);
+    // dbg!(&reachable_map);
+
+    let starts = reachable_map
+        .get(&entrance)
+        .expect("nothing reachable from entrance");
+    let reachable_starts: Vec<_> = starts
+        .iter()
+        .filter(|reachable| reachable.required_keys.len() == 0)
+        .collect();
+    let all_keys = find_all_keys2(&map);
+    let mut cache = HashMap::new();
+    // dbg!(&reachable_starts);
+    reachable_starts
+        .iter()
+        .filter_map(|reachable| {
+            let key = reachable.key;
+            let mut without = all_keys.clone();
+            without.remove(&key);
+            find_from(&map, &reachable_map, &all_keys, key, without, &mut cache)
+                .map(|d| reachable.distance + d)
+        })
+        .min()
+        .ok_or(err_msg("empty?"))
 }
 
 #[cfg(test)]
@@ -700,10 +524,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_part1() -> Result<()> {
+    fn test_key_char() {
+        assert_eq!(_key_char(key_bits('a')), 'a');
+        assert_eq!(_key_char(key_bits('c')), 'c');
+        assert_eq!(_key_char(key_bits('z')), 'z');
+    }
+
+    #[test]
+    fn test_part1a() -> Result<()> {
         assert_eq!(
             part1(
-                "#########
+                "\
+#########
 #b.A.@.a#
 #########"
             )?,
@@ -741,6 +573,22 @@ mod tests {
 ########################"
             )?,
             81
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_part1d() -> Result<()> {
+        assert_eq!(
+            part1(
+                "\
+########################
+#c.A.B.b.............@.#
+######################.#
+#a.....................#
+########################"
+            )?,
+            68
         );
         Ok(())
     }
