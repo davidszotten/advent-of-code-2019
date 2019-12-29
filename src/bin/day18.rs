@@ -326,6 +326,9 @@ fn _all_requirements(
             if let Some((required_keys, found_keys, distance)) =
                 _requirements(&map_v, &left, &right)
             {
+                // if left == Coor::new(7, 3) && right == Coor::new(9, 1) {
+                // dbg!(&required_keys, &found_keys, distance);
+                // }
                 reachable.push(Reachable {
                     pos: right,
                     required_keys,
@@ -336,6 +339,9 @@ fn _all_requirements(
             }
         }
         reachable.sort_by_key(|r| r.distance);
+        // if left == Coor::new(7, 3) {
+        //     dbg!(&left, &reachable);
+        // }
         reqs.insert(left, reachable);
     }
     reqs
@@ -381,21 +387,25 @@ fn find_all_keys(map: &HashMap<Coor, Tile>) -> HashSet<char> {
         .collect()
 }
 
-// 2006 too high
-// 2114 ?!
 enum _Action {
     Insert,
     Replace,
     Skip,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+enum From {
+    Entrance(Coor),
+    Key(char),
+}
+
 fn find_from(
     map: &HashMap<Coor, Tile>,
     reachable_map: &HashMap<Coor, Vec<Reachable>>,
     all_keys: &HashSet<char>,
-    key: char,
-    keys: HashSet<char>,
-    mut cache: &mut HashMap<(char, Vec<char>), usize>,
+    from: From,
+    keys: &HashSet<char>,
+    mut cache: &mut HashMap<(From, Vec<char>), usize>,
 ) -> Option<usize> {
     // assume we're at `key`, and have everything but `keys`
 
@@ -406,17 +416,20 @@ fn find_from(
     }
     let mut key_v: Vec<_> = (&keys).iter().map(|&c| c).collect();
     key_v.sort();
-    if let Some(&distance) = cache.get(&(key, key_v.clone())) {
+    if let Some(&distance) = cache.get(&(from, key_v.clone())) {
         return Some(distance);
     }
 
-    let key_coor = map
-        .iter()
-        .filter_map(|(k, &v)| if v == Tile::Key(key) { Some(k) } else { None })
-        .next()
-        .expect("key not found");
+    let from_coor = match from {
+        From::Entrance(coor) => coor,
+        From::Key(key) => map
+            .iter()
+            .filter_map(|(k, &v)| if v == Tile::Key(key) { Some(*k) } else { None })
+            .next()
+            .expect("key not found"),
+    };
 
-    let reachables = match reachable_map.get(&key_coor) {
+    let reachables = match reachable_map.get(&from_coor) {
         None => {
             return None;
         }
@@ -428,36 +441,68 @@ fn find_from(
         .filter(|r| keys.contains(&r.key))
         .filter(|r| {
             let mut have: HashSet<_> = all_keys.difference(&keys).cloned().collect();
-            have.insert(key);
+            if let From::Key(key) = from {
+                have.insert(key);
+            }
 
             r.required_keys.difference(&have).count() == 0
         })
         .filter_map(|r| {
             let mut new_set: HashSet<char> = keys.difference(&r.found_keys).cloned().collect();
             new_set.remove(&r.key);
-            find_from(&map, &reachable_map, all_keys, r.key, new_set, &mut cache)
-                .map(|d| d + r.distance)
+            find_from(
+                &map,
+                &reachable_map,
+                all_keys,
+                From::Key(r.key),
+                &new_set,
+                &mut cache,
+            )
+            .map(|d| d + r.distance)
         })
         // .inspect(|r| {})
         .min()
         .map(|distance| {
-            cache.insert((key, key_v), distance);
+            cache.insert((from, key_v), distance);
 
             distance
         })
+}
+
+fn print_from(from: [From; 4]) {
+    print!("[");
+    for f in &from {
+        match f {
+            From::Key(k) => print!("{}, ", k),
+            From::Entrance(c) => print!("{:?}, ", c),
+        }
+    }
+    print!("]");
 }
 
 fn find_from4(
     map: &HashMap<Coor, Tile>,
     reachable_map: &HashMap<Coor, Vec<Reachable>>,
     all_keys: &HashSet<char>,
-    key: [char; 4],
-    keys: HashSet<char>,
-    mut cache: &mut HashMap<(char, Vec<char>), usize>,
+    from: [From; 4],
+    keys: &HashSet<char>,
+    // mut cache: &mut HashMap<(From, Vec<char>), usize>,
+    mut cache: &mut HashMap<([From; 4], Vec<char>), Option<usize>>,
 ) -> Option<usize> {
     // assume we're at `key`, and have everything but `keys`
 
-    println!("find_from {:?}: {}", key, &keys.iter().collect::<String>());
+    // print!("find_from4 [");
+    // for f in &from {
+    //     match f {
+    //         From::Key(k) => print!("{}, ", k),
+    //         From::Entrance(c) => print!("{:?}, ", c),
+    //     }
+    // }
+    // println!("] to {}", display_keys(&keys));
+
+    // if display_keys(&keys) == "cdfgjklmno".to_string() && from[0] == From::Key('b') {
+    //     dbg!(display_keys(&keys), &from);
+    // }
 
     if keys.is_empty() {
         return Some(0);
@@ -465,56 +510,122 @@ fn find_from4(
     let mut key_v: Vec<_> = (&keys).iter().map(|&c| c).collect();
     key_v.sort();
 
+    if let Some(distance) = cache.get(&(from, key_v.clone())).clone() {
+        return *distance;
+    }
+
     let mut tmp: Vec<usize> = vec![];
     // for &key in key.iter() {
     for idx in 0..4 {
-        let prev_key = key.clone();
-        let key = key[idx];
-        if let Some(distance) = cache.get(&(key, key_v.clone())).clone() {
-            tmp.push(*distance);
+        // let prev_from = from.clone();
+        let indexed_from = from[idx];
+        // if let Some(distance) = cache.get(&(indexed_from, key_v.clone())).clone() {
+        if false {
+            // tmp.push(*distance);
         } else {
-            let key_coor = map
-                .iter()
-                .filter_map(|(k, &v)| if v == Tile::Key(key) { Some(k) } else { None })
-                .next()
-                .expect("key not found");
+            let from_coor = match indexed_from {
+                From::Entrance(coor) => coor,
+                From::Key(key) => map
+                    .iter()
+                    .filter_map(|(k, &v)| if v == Tile::Key(key) { Some(*k) } else { None })
+                    .next()
+                    .expect("key not found"),
+            };
 
-            let reachables = match reachable_map.get(&key_coor) {
+            let reachables = match reachable_map.get(&from_coor) {
                 None => {
                     return None;
                 }
                 Some(reachables) => reachables,
             };
+            // if indexed_from == From::Key('e') && display_keys(&keys) == "abcdfghijklmno".to_string()
+            // if indexed_from == From::Entrance(Coor::new(7, 3))
+            // && display_keys(&keys) == "abcdfghijklmno".to_string()
+            // if display_keys(&keys) == "cdfgjklmno".to_string()
+            //     && from_coor == Coor::new(9, 1)
+            //     && from[0] == From::Key('b')
+            // {
+            //     // dbg!(display_keys(&keys));
+            //     // dbg!(&from);
+            //     // dbg!(&from_coor, &reachables, &from);
+            //     // dbg!("foo");
+            // }
 
             if let Some(distance) = reachables
                 .iter()
                 .filter(|r| keys.contains(&r.key))
                 .filter(|r| {
                     let mut have: HashSet<_> = all_keys.difference(&keys).cloned().collect();
-                    have.insert(key);
+                    for i in 0..4 {
+                        if let From::Key(key) = from[i] {
+                            have.insert(key);
+                        }
+                    }
 
+                    // if indexed_from == From::Entrance(Coor::new(7, 3))
+                    // && display_keys(&keys) == "abcdfghijklmno".to_string()
+                    // if display_keys(&keys) == "cdfgjklmno".to_string()
+                    //     && from_coor == Coor::new(9, 1)
+                    //     && from[0] == From::Key('b')
+                    // {
+                    //     dbg!(&have, &r, r.required_keys.difference(&have).count() == 0);
+                    // }
                     r.required_keys.difference(&have).count() == 0
                 })
                 .filter_map(|r| {
                     let mut new_set: HashSet<char> =
                         keys.difference(&r.found_keys).cloned().collect();
+                    for i in 0..4 {
+                        if let From::Key(key) = from[i] {
+                            new_set.remove(&key);
+                        }
+                    }
                     new_set.remove(&r.key);
-                    let mut prev_key = prev_key.clone();
-                    prev_key[idx] = r.key;
-                    find_from4(
+                    let mut prev_from = from.clone();
+                    prev_from[idx] = From::Key(r.key);
+                    let res = find_from4(
                         &map,
                         &reachable_map,
                         all_keys,
-                        prev_key,
-                        new_set,
+                        prev_from,
+                        &new_set,
                         &mut cache,
-                    )
-                    .map(|d| d + r.distance)
+                    );
+                    // if indexed_from == From::Key('k') && key_v == vec!['j', 'l', 'm', 'n', 'o'] {
+                    //     print_from(prev_from);
+                    //     println!("");
+                    //     println!("{:?}", from_coor);
+                    //     println!("{:?}", r);
+                    //     println!("{}", display_keys(&new_set));
+                    //     dbg!(&res);
+                    // }
+                    res.map(|d| (r, d + r.distance))
                 })
-                // .inspect(|r| {})
+                .inspect(|(_r, _d)| {
+                    // dbg!(&r, &keys, d);
+                    {
+                        // println!("{:?}, {}, {}", &r, display_keys(&keys), d)
+                    };
+                })
+                .map(|(_, d)| d)
                 .min()
                 .map(|distance| {
-                    cache.insert((key, key_v.clone()), distance);
+                    // if let Some(found) = cache.get(&(indexed_from, key_v.clone())) {
+                    //     if *found != distance
+                    //         && key_v == vec!['j', 'l', 'm', 'n', 'o']
+                    //         && indexed_from == From::Key('k')
+                    //     {
+                    //         dbg!(
+                    //             &indexed_from,
+                    //             &key_v.iter().collect::<String>(),
+                    //             distance,
+                    //             found
+                    //         );
+                    //     }
+                    // } else {
+                    //     // dbg!(&indexed_from, &key_v, distance, distance);
+                    //     cache.insert((indexed_from, key_v.clone()), distance);
+                    // }
 
                     distance
                 })
@@ -523,20 +634,26 @@ fn find_from4(
             }
         }
     }
-    tmp.into_iter().min()
+    let res = tmp.into_iter().min();
+
+    cache.insert((from, key_v.clone()), res);
+
+    // print!("find_from4 [");
+    // for f in &from {
+    //     match f {
+    //         From::Key(k) => print!("{}, ", k),
+    //         From::Entrance(c) => print!("{:?}, ", c),
+    //     }
+    // }
+    // println!("] to {}: {:?}", display_keys(&keys), res);
+
+    res
 }
 
-fn get_reachable_starts<'a>(
-    reachable_map: &'a HashMap<Coor, Vec<Reachable>>,
-    entrance: &Coor,
-) -> Vec<&'a Reachable> {
-    let starts = reachable_map
-        .get(&entrance)
-        .expect("nothing reachable from entrance");
-    starts
-        .iter()
-        .filter(|reachable| reachable.required_keys.len() == 0)
-        .collect()
+fn display_keys(keys: &HashSet<char>) -> String {
+    let mut keys: Vec<_> = keys.into_iter().collect();
+    keys.sort();
+    keys.into_iter().collect()
 }
 
 fn part1(input: &str) -> Result<usize> {
@@ -544,20 +661,17 @@ fn part1(input: &str) -> Result<usize> {
     // let (map, _entrances) = switch_entrance(map, entrance);
     let reachable_map = _all_requirements(&map, &[entrance]);
 
-    let reachable_starts = get_reachable_starts(&reachable_map, &entrance);
     let all_keys = find_all_keys(&map);
     let mut cache = HashMap::new();
-    reachable_starts
-        .iter()
-        .filter_map(|reachable| {
-            let key = reachable.key;
-            let mut without = all_keys.clone();
-            without.remove(&key);
-            find_from(&map, &reachable_map, &all_keys, key, without, &mut cache)
-                .map(|d| reachable.distance + d)
-        })
-        .min()
-        .ok_or(err_msg("empty (b)?"))
+    find_from(
+        &map,
+        &reachable_map,
+        &all_keys,
+        From::Entrance(entrance),
+        &all_keys,
+        &mut cache,
+    )
+    .ok_or(err_msg("empty pt1"))
 }
 
 fn part2(input: &str) -> Result<usize> {
@@ -565,58 +679,24 @@ fn part2(input: &str) -> Result<usize> {
     let (map, entrances) = switch_entrance(map, entrance);
     let reachable_map = _all_requirements(&map, &entrances);
 
-    let reachable_starts1 = get_reachable_starts(&reachable_map, &entrances[0]);
-    let reachable_starts2 = get_reachable_starts(&reachable_map, &entrances[1]);
-    let reachable_starts3 = get_reachable_starts(&reachable_map, &entrances[2]);
-    let reachable_starts4 = get_reachable_starts(&reachable_map, &entrances[3]);
-    let mut reachable_starts = vec![];
-    for s1 in &reachable_starts1 {
-        for s2 in &reachable_starts2 {
-            for s3 in &reachable_starts3 {
-                for s4 in &reachable_starts4 {
-                    reachable_starts.push([s1, s2, s3, s4]);
-                }
-            }
-        }
-    }
-    // dbg!(&reachable_starts1);
-    // dbg!(&reachable_starts2);
-
-    // let starts = entrances
-    //     .iter()
-    //     .map(|entrance| {
-    //         reachable_map
-    //             .get(&entrance)
-    //             .expect("nothing reachable from entrance")
-    //     })
-    //     .fold(vec![], |mut acc, x| {
-    //         acc.append(&mut x.clone());
-    //         acc
-    //     });
-    // dbg!(&starts);
     let all_keys = find_all_keys(&map);
     let mut cache = HashMap::new();
-    reachable_starts
-        .iter()
-        .filter_map(|reachable4| {
-            // let keys = &reachable4.iter().map(|r| r.key).collect();
-            let keys = [
-                reachable4[0].key,
-                reachable4[1].key,
-                reachable4[2].key,
-                reachable4[3].key,
-            ];
-            let distance: usize = reachable4.iter().map(|r| r.distance).sum();
-            let mut without = all_keys.clone();
-            without.remove(&keys[0]);
-            without.remove(&keys[1]);
-            without.remove(&keys[2]);
-            without.remove(&keys[3]);
-            find_from4(&map, &reachable_map, &all_keys, keys, without, &mut cache)
-                .map(|d| distance + d)
-        })
-        .min()
-        .ok_or(err_msg("empty (a)?"))
+    let res = find_from4(
+        &map,
+        &reachable_map,
+        &all_keys,
+        [
+            From::Entrance(entrances[0]),
+            From::Entrance(entrances[1]),
+            From::Entrance(entrances[2]),
+            From::Entrance(entrances[3]),
+        ],
+        &all_keys,
+        &mut cache,
+    )
+    .ok_or(err_msg("empty (a)?"));
+    // dbg!(cache);
+    res
 }
 
 #[cfg(test)]
