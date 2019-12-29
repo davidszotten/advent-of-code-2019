@@ -1,9 +1,8 @@
 use aoc2019::coor::Coor;
 use aoc2019::{dispatch, Result};
 use failure::err_msg;
-use std::cmp::Ordering;
-// use std::cmp::{min, Ordering};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::ops::{Add, Sub};
 
 fn main() -> Result<()> {
     dispatch(&part1, &part2)
@@ -13,7 +12,6 @@ fn main() -> Result<()> {
 enum Tile {
     Open,
     Wall,
-    // Entrance,
     Key(char),
     Door(char),
 }
@@ -44,200 +42,119 @@ fn parse(input: &str) -> (HashMap<Coor, Tile>, Coor) {
     (map, entrance)
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-struct State {
-    pos: Coor,
-    prev: Coor,
-    keys: u32,
-    distance: usize,
+fn coor_key(coor: &Coor) -> usize {
+    (100 * coor.x + coor.y) as usize
 }
 
-impl State {
-    fn _new(pos: &Coor, prev: &Coor, keys: u32, distance: usize) -> Self {
-        Self {
-            pos: pos.clone(),
-            prev: prev.clone(),
-            keys,
-            distance,
+#[derive(PartialEq, Eq, Clone, Copy, Hash, Default)]
+struct KeyBits {
+    n: u32,
+}
+
+impl KeyBits {
+    fn new(n: u32) -> Self {
+        KeyBits { n }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+
+    fn contains(&self, key: char) -> bool {
+        // TODO: check
+        !self.n & KeyBits::char_to_bit(key) == 0
+    }
+
+    fn char_to_bit(key: char) -> u32 {
+        1 << (key as u8 - 'a' as u8)
+    }
+
+    fn _bit_to_char(bit: u32) -> char {
+        let mut n = 1;
+        let mut bit = bit;
+        while bit > 1 {
+            n += 1;
+            bit >>= 1;
         }
+        (n - 1 + 'a' as u8) as char
     }
 
-    fn _seen_key(&self) -> (Coor, u32) {
-        (self.pos, self.keys)
-    }
-}
-
-#[derive(PartialEq, Eq, Clone)]
-struct State4 {
-    pos: [Coor; 4],
-    // prev: [Coor; 4],
-    robot: usize,
-    keys: u32,
-    distance: usize,
-}
-
-// impl std::hash::Hash for State4 {
-//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-//         self.pos.hash(state);
-//         self.keys.hash(state);
-//     }
-// }
-
-impl State4 {
-    fn _new(pos: [Coor; 4], _prev: [Coor; 4], robot: usize, keys: u32, distance: usize) -> Self {
-        Self {
-            pos: pos.clone(),
-            // prev: prev.clone(),
-            robot,
-            keys,
-            distance,
-        }
-    }
-
-    // fn seen_key(&self, key_map: u32) -> (Coor, u32) {
-    // (self.pos[self.robot], self.keys & key_map)
-    // }
-    fn _seen_key(&self) -> ([Coor; 4], u32) {
-        (self.pos, self.keys)
-    }
-
-    fn display_keys(&self) -> String {
+    fn display(&self) -> String {
         (('a' as u8)..=('z' as u8))
             .map(|c| (c, (1 << c - 'a' as u8)))
-            .filter(|(_, k)| self.keys & k != 0)
+            .filter(|(_, k)| self.n & k != 0)
             .map(|(c, _)| c as char)
             .collect::<String>()
     }
 }
 
-impl std::hash::Hash for State4 {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.pos.hash(state);
-        self.keys.hash(state);
+impl std::convert::From<Option<char>> for KeyBits {
+    fn from(maybe_char: Option<char>) -> Self {
+        match maybe_char {
+            Some(c) => KeyBits::default() + c,
+            None => KeyBits::default(),
+        }
     }
 }
 
-impl Ord for State4 {
-    fn cmp(&self, other: &State4) -> Ordering {
-        // other.distance.cmp(&self.distance)
-        (other.distance, other.keys).cmp(&(self.distance, self.keys))
+impl Add for KeyBits {
+    type Output = KeyBits;
+    fn add(self, other: KeyBits) -> KeyBits {
+        KeyBits::new(self.n | other.n)
     }
 }
 
-impl PartialOrd for State4 {
-    fn partial_cmp(&self, other: &State4) -> Option<Ordering> {
-        Some((other.distance, other.keys).cmp(&(self.distance, self.keys)))
-        // Some(other.distance.cmp(&self.distance))
+impl Add<char> for KeyBits {
+    type Output = KeyBits;
+    fn add(self, other: char) -> KeyBits {
+        KeyBits::new(self.n | KeyBits::char_to_bit(other))
     }
 }
 
-impl std::fmt::Debug for State4 {
+impl Add<Option<char>> for KeyBits {
+    type Output = KeyBits;
+    fn add(self, other: Option<char>) -> KeyBits {
+        match other {
+            Some(c) => self + c,
+            None => self,
+        }
+    }
+}
+
+impl Sub for KeyBits {
+    type Output = KeyBits;
+    fn sub(self, other: KeyBits) -> KeyBits {
+        KeyBits::new(self.n & !other.n)
+    }
+}
+
+impl Sub<char> for KeyBits {
+    type Output = KeyBits;
+    fn sub(self, other: char) -> KeyBits {
+        KeyBits::new(self.n & !KeyBits::char_to_bit(other))
+    }
+}
+
+impl std::iter::FromIterator<char> for KeyBits {
+    fn from_iter<I: IntoIterator<Item = char>>(iter: I) -> Self {
+        KeyBits::new(
+            iter.into_iter()
+                .map(|c| KeyBits::char_to_bit(c))
+                .fold(0, |acc, x| acc | x),
+        )
+    }
+}
+
+impl std::fmt::Debug for KeyBits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "State {{")?;
-        writeln!(f, "  robot: {}", self.robot)?;
-        writeln!(f, "  {:?}", self.pos)?;
-        // writeln!(f, "  {:?} <- {:?}", self.pos, self.prev[self.robot])?;
-
-        write!(f, "  {}\n  {}\n", self.display_keys(), self.distance)?;
-        write!(f, "}}\n")
+        write!(f, "KeyBits {{{}}}", self.display())
     }
 }
 
-fn key_bits(key: char) -> u32 {
-    1 << (key as u8 - 'a' as u8)
-}
-
-fn _key_char(key: u32) -> char {
-    let mut n = 1;
-    let mut key = key;
-    while key > 1 {
-        n += 1;
-        key >>= 1;
-    }
-    (n - 1 + 'a' as u8) as char
-}
-
-#[derive(PartialEq, Eq, Clone)]
-struct StateL {
-    order: Vec<char>,
-    keys: HashSet<char>,
-    distance: usize,
-}
-
-impl StateL {
-    fn _new(prev: &StateL, next: char, distance: usize) -> Self {
-        let mut order = prev.order.clone();
-        order.push(next);
-        let mut keys = prev.keys.clone();
-        assert!(!keys.contains(&next));
-        keys.insert(next);
-
-        StateL {
-            order,
-            keys,
-            distance: prev.distance + distance,
-        }
-    }
-
-    fn _first() -> Self {
-        StateL {
-            order: vec![],
-            keys: HashSet::new(),
-            distance: 0,
-        }
-    }
-}
-
-impl std::hash::Hash for StateL {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.keys
-            .iter()
-            .fold(0, |a, &x| a | key_bits(x))
-            .hash(state);
-    }
-}
-
-impl Ord for StateL {
-    fn cmp(&self, other: &StateL) -> Ordering {
-        other.distance.cmp(&self.distance)
-    }
-}
-
-impl PartialOrd for StateL {
-    fn partial_cmp(&self, other: &StateL) -> Option<Ordering> {
-        Some(other.distance.cmp(&self.distance))
-    }
-}
-
-// fn available(map: &HashMap<Coor, Tile>, state: &State) -> Vec<Coor> {
-//     [
-//         Coor::new(-1, 0),
-//         Coor::new(1, 0),
-//         Coor::new(0, -1),
-//         Coor::new(0, 1),
-//     ]
-//     .iter()
-//     .map(|&d| state.pos + d)
-//     .filter(|&new| match *map.get(&new).expect("not in map") {
-//         Tile::Open => true,
-//         Tile::Key(_) => true,
-//         Tile::Door(c) => state.keys.contains(&c),
-//         Tile::Wall => false,
-//     })
-// }
-
-fn coor_key(coor: &Coor) -> usize {
-    (100 * coor.x + coor.y) as usize
-}
-
-fn _requirements(
-    map: &[Tile],
-    start: &Coor,
-    end: &Coor,
-) -> Option<(HashSet<char>, HashSet<char>, usize)> {
+fn requirements(map: &[Tile], start: &Coor, end: &Coor) -> Option<(KeyBits, KeyBits, usize)> {
     let mut seen = HashSet::new();
     let mut queue = VecDeque::new();
-    queue.push_back((*start, HashSet::new(), HashSet::new(), 0));
+    queue.push_back((*start, KeyBits::default(), KeyBits::default(), 0));
     while let Some((pos, required_keys, found_keys, distance)) = queue.pop_front() {
         seen.insert(pos);
         let neighbours = [
@@ -264,15 +181,12 @@ fn _requirements(
             if seen.contains(&new_pos) {
                 continue;
             }
-            let mut required_keys2 = required_keys.clone();
-            let mut found_keys2 = found_keys.clone();
-            if let Some(required_key) = required_key {
-                required_keys2.insert(required_key);
-            }
-            if let Some(found_key) = found_key {
-                found_keys2.insert(found_key);
-            }
-            queue.push_back((new_pos, required_keys2, found_keys2, distance + 1));
+            queue.push_back((
+                new_pos,
+                required_keys + KeyBits::from(required_key),
+                found_keys + KeyBits::from(found_key),
+                distance + 1,
+            ));
         }
     }
     None
@@ -281,8 +195,8 @@ fn _requirements(
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct Reachable {
     pos: Coor,
-    required_keys: HashSet<char>,
-    found_keys: HashSet<char>,
+    required_keys: KeyBits,
+    found_keys: KeyBits,
     key: char,
     distance: usize,
 }
@@ -323,8 +237,7 @@ fn _all_requirements(
                     continue 'right;
                 }
             }
-            if let Some((required_keys, found_keys, distance)) =
-                _requirements(&map_v, &left, &right)
+            if let Some((required_keys, found_keys, distance)) = requirements(&map_v, &left, &right)
             {
                 // if left == Coor::new(7, 3) && right == Coor::new(9, 1) {
                 // dbg!(&required_keys, &found_keys, distance);
@@ -378,7 +291,7 @@ fn switch_entrance(map: HashMap<Coor, Tile>, entrance: Coor) -> (HashMap<Coor, T
     (map, entrances)
 }
 
-fn find_all_keys(map: &HashMap<Coor, Tile>) -> HashSet<char> {
+fn find_all_keys(map: &HashMap<Coor, Tile>) -> KeyBits {
     map.values()
         .filter_map(|v| match v {
             Tile::Key(c) => Some(*c),
@@ -402,10 +315,10 @@ enum From {
 fn find_from(
     map: &HashMap<Coor, Tile>,
     reachable_map: &HashMap<Coor, Vec<Reachable>>,
-    all_keys: &HashSet<char>,
+    all_keys: KeyBits,
     from: From,
-    keys: &HashSet<char>,
-    mut cache: &mut HashMap<(From, Vec<char>), usize>,
+    keys: KeyBits,
+    mut cache: &mut HashMap<(From, KeyBits), usize>,
 ) -> Option<usize> {
     // assume we're at `key`, and have everything but `keys`
 
@@ -414,9 +327,7 @@ fn find_from(
     if keys.is_empty() {
         return Some(0);
     }
-    let mut key_v: Vec<_> = (&keys).iter().map(|&c| c).collect();
-    key_v.sort();
-    if let Some(&distance) = cache.get(&(from, key_v.clone())) {
+    if let Some(&distance) = cache.get(&(from, keys)) {
         return Some(distance);
     }
 
@@ -438,24 +349,23 @@ fn find_from(
 
     reachables
         .iter()
-        .filter(|r| keys.contains(&r.key))
+        .filter(|r| keys.contains(r.key))
         .filter(|r| {
-            let mut have: HashSet<_> = all_keys.difference(&keys).cloned().collect();
-            if let From::Key(key) = from {
-                have.insert(key);
-            }
+            let have = all_keys - keys
+                + match from {
+                    From::Key(k) => Some(k),
+                    From::Entrance(_) => None,
+                };
 
-            r.required_keys.difference(&have).count() == 0
+            (r.required_keys - have).is_empty()
         })
         .filter_map(|r| {
-            let mut new_set: HashSet<char> = keys.difference(&r.found_keys).cloned().collect();
-            new_set.remove(&r.key);
             find_from(
                 &map,
                 &reachable_map,
                 all_keys,
                 From::Key(r.key),
-                &new_set,
+                keys - r.found_keys - r.key,
                 &mut cache,
             )
             .map(|d| d + r.distance)
@@ -463,13 +373,13 @@ fn find_from(
         // .inspect(|r| {})
         .min()
         .map(|distance| {
-            cache.insert((from, key_v), distance);
+            cache.insert((from, keys), distance);
 
             distance
         })
 }
 
-fn print_from(from: [From; 4]) {
+fn _print_from(from: [From; 4]) {
     print!("[");
     for f in &from {
         match f {
@@ -483,11 +393,11 @@ fn print_from(from: [From; 4]) {
 fn find_from4(
     map: &HashMap<Coor, Tile>,
     reachable_map: &HashMap<Coor, Vec<Reachable>>,
-    all_keys: &HashSet<char>,
+    all_keys: KeyBits,
     from: [From; 4],
-    keys: &HashSet<char>,
+    keys: KeyBits,
     // mut cache: &mut HashMap<(From, Vec<char>), usize>,
-    mut cache: &mut HashMap<([From; 4], Vec<char>), Option<usize>>,
+    mut cache: &mut HashMap<([From; 4], KeyBits), Option<usize>>,
 ) -> Option<usize> {
     // assume we're at `key`, and have everything but `keys`
 
@@ -498,7 +408,7 @@ fn find_from4(
     //         From::Entrance(c) => print!("{:?}, ", c),
     //     }
     // }
-    // println!("] to {}", display_keys(&keys));
+    // println!("] to {:?}", &keys);
 
     // if display_keys(&keys) == "cdfgjklmno".to_string() && from[0] == From::Key('b') {
     //     dbg!(display_keys(&keys), &from);
@@ -507,136 +417,101 @@ fn find_from4(
     if keys.is_empty() {
         return Some(0);
     }
-    let mut key_v: Vec<_> = (&keys).iter().map(|&c| c).collect();
-    key_v.sort();
-
-    if let Some(distance) = cache.get(&(from, key_v.clone())).clone() {
+    if let Some(distance) = cache.get(&(from, keys)) {
         return *distance;
     }
 
+    let from_keys: KeyBits = from
+        .iter()
+        .filter_map(|f| match f {
+            From::Key(key) => Some(*key),
+            _ => None,
+        })
+        .collect();
+
     let mut tmp: Vec<usize> = vec![];
-    // for &key in key.iter() {
     for idx in 0..4 {
-        // let prev_from = from.clone();
         let indexed_from = from[idx];
-        // if let Some(distance) = cache.get(&(indexed_from, key_v.clone())).clone() {
-        if false {
-            // tmp.push(*distance);
-        } else {
-            let from_coor = match indexed_from {
-                From::Entrance(coor) => coor,
-                From::Key(key) => map
-                    .iter()
-                    .filter_map(|(k, &v)| if v == Tile::Key(key) { Some(*k) } else { None })
-                    .next()
-                    .expect("key not found"),
-            };
-
-            let reachables = match reachable_map.get(&from_coor) {
-                None => {
-                    return None;
-                }
-                Some(reachables) => reachables,
-            };
-            // if indexed_from == From::Key('e') && display_keys(&keys) == "abcdfghijklmno".to_string()
-            // if indexed_from == From::Entrance(Coor::new(7, 3))
-            // && display_keys(&keys) == "abcdfghijklmno".to_string()
-            // if display_keys(&keys) == "cdfgjklmno".to_string()
-            //     && from_coor == Coor::new(9, 1)
-            //     && from[0] == From::Key('b')
-            // {
-            //     // dbg!(display_keys(&keys));
-            //     // dbg!(&from);
-            //     // dbg!(&from_coor, &reachables, &from);
-            //     // dbg!("foo");
-            // }
-
-            if let Some(distance) = reachables
+        let from_coor = match indexed_from {
+            From::Entrance(coor) => coor,
+            From::Key(key) => map
                 .iter()
-                .filter(|r| keys.contains(&r.key))
-                .filter(|r| {
-                    let mut have: HashSet<_> = all_keys.difference(&keys).cloned().collect();
-                    for i in 0..4 {
-                        if let From::Key(key) = from[i] {
-                            have.insert(key);
-                        }
-                    }
+                .filter_map(|(k, &v)| if v == Tile::Key(key) { Some(*k) } else { None })
+                .next()
+                .expect("key not found"),
+        };
 
-                    // if indexed_from == From::Entrance(Coor::new(7, 3))
-                    // && display_keys(&keys) == "abcdfghijklmno".to_string()
-                    // if display_keys(&keys) == "cdfgjklmno".to_string()
-                    //     && from_coor == Coor::new(9, 1)
-                    //     && from[0] == From::Key('b')
-                    // {
-                    //     dbg!(&have, &r, r.required_keys.difference(&have).count() == 0);
-                    // }
-                    r.required_keys.difference(&have).count() == 0
-                })
-                .filter_map(|r| {
-                    let mut new_set: HashSet<char> =
-                        keys.difference(&r.found_keys).cloned().collect();
-                    for i in 0..4 {
-                        if let From::Key(key) = from[i] {
-                            new_set.remove(&key);
-                        }
-                    }
-                    new_set.remove(&r.key);
-                    let mut prev_from = from.clone();
-                    prev_from[idx] = From::Key(r.key);
-                    let res = find_from4(
-                        &map,
-                        &reachable_map,
-                        all_keys,
-                        prev_from,
-                        &new_set,
-                        &mut cache,
-                    );
-                    // if indexed_from == From::Key('k') && key_v == vec!['j', 'l', 'm', 'n', 'o'] {
-                    //     print_from(prev_from);
-                    //     println!("");
-                    //     println!("{:?}", from_coor);
-                    //     println!("{:?}", r);
-                    //     println!("{}", display_keys(&new_set));
-                    //     dbg!(&res);
-                    // }
-                    res.map(|d| (r, d + r.distance))
-                })
-                .inspect(|(_r, _d)| {
-                    // dbg!(&r, &keys, d);
-                    {
-                        // println!("{:?}, {}, {}", &r, display_keys(&keys), d)
-                    };
-                })
-                .map(|(_, d)| d)
-                .min()
-                .map(|distance| {
-                    // if let Some(found) = cache.get(&(indexed_from, key_v.clone())) {
-                    //     if *found != distance
-                    //         && key_v == vec!['j', 'l', 'm', 'n', 'o']
-                    //         && indexed_from == From::Key('k')
-                    //     {
-                    //         dbg!(
-                    //             &indexed_from,
-                    //             &key_v.iter().collect::<String>(),
-                    //             distance,
-                    //             found
-                    //         );
-                    //     }
-                    // } else {
-                    //     // dbg!(&indexed_from, &key_v, distance, distance);
-                    //     cache.insert((indexed_from, key_v.clone()), distance);
-                    // }
-
-                    distance
-                })
-            {
-                tmp.push(distance);
+        let reachables = match reachable_map.get(&from_coor) {
+            None => {
+                return None;
             }
+            Some(reachables) => reachables,
+        };
+
+        if let Some(distance) = reachables
+            .iter()
+            .filter(|r| keys.contains(r.key))
+            .filter(|r| {
+                let have = all_keys - keys + from_keys;
+
+                (r.required_keys - have).is_empty()
+            })
+            .filter_map(|r| {
+                let mut prev_from = from.clone();
+                prev_from[idx] = From::Key(r.key);
+                let res = find_from4(
+                    &map,
+                    &reachable_map,
+                    all_keys,
+                    prev_from,
+                    keys - r.found_keys - from_keys - r.key,
+                    &mut cache,
+                );
+                // if indexed_from == From::Key('k') && key_v == vec!['j', 'l', 'm', 'n', 'o'] {
+                //     print_from(prev_from);
+                //     println!("");
+                //     println!("{:?}", from_coor);
+                //     println!("{:?}", r);
+                //     println!("{}", display_keys(&new_set));
+                //     dbg!(&res);
+                // }
+                res.map(|d| (r, d + r.distance))
+            })
+            .inspect(|(_r, _d)| {
+                // dbg!(&r, &keys, d);
+                {
+                    // println!("{:?}, {}, {}", &r, display_keys(&keys), d)
+                };
+            })
+            .map(|(_, d)| d)
+            .min()
+            .map(|distance| {
+                // if let Some(found) = cache.get(&(indexed_from, key_v.clone())) {
+                //     if *found != distance
+                //         && key_v == vec!['j', 'l', 'm', 'n', 'o']
+                //         && indexed_from == From::Key('k')
+                //     {
+                //         dbg!(
+                //             &indexed_from,
+                //             &key_v.iter().collect::<String>(),
+                //             distance,
+                //             found
+                //         );
+                //     }
+                // } else {
+                //     // dbg!(&indexed_from, &key_v, distance, distance);
+                //     cache.insert((indexed_from, key_v.clone()), distance);
+                // }
+
+                distance
+            })
+        {
+            tmp.push(distance);
         }
     }
     let res = tmp.into_iter().min();
 
-    cache.insert((from, key_v.clone()), res);
+    cache.insert((from, keys), res);
 
     // print!("find_from4 [");
     // for f in &from {
@@ -645,20 +520,13 @@ fn find_from4(
     //         From::Entrance(c) => print!("{:?}, ", c),
     //     }
     // }
-    // println!("] to {}: {:?}", display_keys(&keys), res);
+    // println!("] to {:?}: {:?}", &keys, res);
 
     res
 }
 
-fn display_keys(keys: &HashSet<char>) -> String {
-    let mut keys: Vec<_> = keys.into_iter().collect();
-    keys.sort();
-    keys.into_iter().collect()
-}
-
 fn part1(input: &str) -> Result<usize> {
     let (map, entrance) = parse(input);
-    // let (map, _entrances) = switch_entrance(map, entrance);
     let reachable_map = _all_requirements(&map, &[entrance]);
 
     let all_keys = find_all_keys(&map);
@@ -666,9 +534,9 @@ fn part1(input: &str) -> Result<usize> {
     find_from(
         &map,
         &reachable_map,
-        &all_keys,
+        all_keys,
         From::Entrance(entrance),
-        &all_keys,
+        all_keys,
         &mut cache,
     )
     .ok_or(err_msg("empty pt1"))
@@ -684,18 +552,17 @@ fn part2(input: &str) -> Result<usize> {
     let res = find_from4(
         &map,
         &reachable_map,
-        &all_keys,
+        all_keys,
         [
             From::Entrance(entrances[0]),
             From::Entrance(entrances[1]),
             From::Entrance(entrances[2]),
             From::Entrance(entrances[3]),
         ],
-        &all_keys,
+        all_keys,
         &mut cache,
     )
     .ok_or(err_msg("empty (a)?"));
-    // dbg!(cache);
     res
 }
 
@@ -704,10 +571,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_key_char() {
-        assert_eq!(_key_char(key_bits('a')), 'a');
-        assert_eq!(_key_char(key_bits('c')), 'c');
-        assert_eq!(_key_char(key_bits('z')), 'z');
+    fn test_key_bits() {
+        let kb = KeyBits::default();
+        assert_eq!(kb.display(), "");
+        assert!(!kb.contains('a'));
+
+        let kb1 = kb + 'a' + 'b';
+        assert_eq!(kb1.display(), "ab");
+        assert!(kb1.contains('a'));
+
+        let kb2 = kb1 - 'a';
+        assert_eq!(kb2.display(), "b");
+        assert!(kb2.contains('b'));
+        assert!(!kb2.contains('a'));
+
+        assert_eq!((kb1 - kb), kb1);
+        assert_eq!((kb2 - kb), kb2);
+        assert_eq!((kb1 - kb2), vec!['a'].into_iter().collect());
+        assert_eq!((kb2 - kb1), kb);
+
+        assert_eq!((kb2 + kb1), kb1);
+        assert_eq!(
+            vec!['a', 'b'].into_iter().collect::<KeyBits>()
+                + vec!['a', 'c'].into_iter().collect::<KeyBits>(),
+            vec!['a', 'b', 'c'].into_iter().collect::<KeyBits>()
+        )
     }
 
     #[test]
@@ -840,8 +728,7 @@ mod tests {
 #o#m..#i#jk.#
 #############"
             )?,
-            // 72
-            1
+            72
         );
         Ok(())
     }
